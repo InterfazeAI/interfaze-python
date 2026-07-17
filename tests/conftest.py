@@ -42,6 +42,15 @@ BASIC = completion("Hi!")
 PRECONTEXT = completion(
     "Total: $12.34", precontext=[{"name": "ocr", "result": {"extracted_text": "Walmart ... TOTAL 12.34"}}]
 )
+# Mixed precontext: a well-formed task entry + a RAW model tool-call entry (as the server
+# appends on any tool / run_code turn) — {toolCallId, toolName, input}, no name/result.
+MIXED_PRECONTEXT = completion(
+    "Ran the code.",
+    precontext=[
+        {"name": "ocr", "result": {"extracted_text": "x"}},
+        {"toolCallId": "call_1", "toolName": "run_code", "input": {"code": "print(1)"}},
+    ],
+)
 REASONING = completion(
     "The sky is blue because...", reasoning="Rayleigh scattering means shorter wavelengths..."
 )

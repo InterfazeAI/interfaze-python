@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, List, Literal, Optional
 
 from openai.types.chat import ChatCompletion
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 TaskName = Literal[
     "ocr",
@@ -16,9 +16,23 @@ TaskName = Literal[
 ]
 
 GuardCode = Literal[
-    "S1", "S2", "S3", "S4", "S5", "S6", "S7",
-    "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-    "S1_IMAGE", "S12_IMAGE", "S15_IMAGE",
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
+    "S8",
+    "S9",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S1_IMAGE",
+    "S12_IMAGE",
+    "S15_IMAGE",
     "ALL",
 ]
 
@@ -27,9 +41,18 @@ ReasoningEffort = Literal["minimal", "low", "medium", "high", "on", "off", "auto
 
 
 class Precontext(BaseModel):
-    """One internal task's raw output, surfaced in ``response.precontext``."""
+    """One internal task's raw output, surfaced in ``response.precontext``.
 
-    name: str
+    Lenient by design: when the final model calls a tool (user-defined tools or internal
+    action tools like ``run_code``), the server appends the raw tool-call objects
+    ``{toolCallId, toolName, input}`` here — with no ``name``/``result``. So both fields are
+    optional and unknown keys are preserved (openai-python's "validate loosely, preserve
+    everything" rule), and re-validating the completion never raises on a tool-call turn.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    name: Optional[str] = None
     result: Any = None
 
 

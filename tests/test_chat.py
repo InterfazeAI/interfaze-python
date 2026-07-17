@@ -8,6 +8,7 @@ import respx
 from conftest import (
     BASIC,
     JSON_OBJECT,
+    MIXED_PRECONTEXT,
     PRECONTEXT,
     REASONING,
     TASK_OCR,
@@ -104,6 +105,20 @@ def test_precontext_and_vcache_typed():
     assert isinstance(r, InterfazeChatCompletion)
     assert r.precontext and r.precontext[0].name == "ocr"
     assert isinstance(r.vcache, bool)
+
+
+@respx.mock
+def test_precontext_tolerates_raw_toolcall_entries():
+    # Regression (issue #1): a tool/run_code turn appends raw {toolCallId,toolName,input}
+    # entries to precontext (no name/result). create() must not raise ValidationError.
+    mock_json(MIXED_PRECONTEXT)
+    r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "run code"}])
+    assert isinstance(r, InterfazeChatCompletion)
+    assert len(r.precontext) == 2
+    assert r.precontext[0].name == "ocr" and r.precontext[0].result == {"extracted_text": "x"}
+    # raw tool-call entry: no name/result, but preserved via extra="allow"
+    assert r.precontext[1].name is None
+    assert (r.precontext[1].model_extra or {}).get("toolName") == "run_code"
 
 
 @respx.mock
