@@ -10,14 +10,35 @@ from ._errors import InterfazeError
 BytesLike = Union[bytes, bytearray]
 
 _EXT_MIME = {
-    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
-    "gif": "image/gif", "bmp": "image/bmp", "heic": "image/heic", "heif": "image/heif",
-    "pdf": "application/pdf", "csv": "text/csv", "tsv": "text/tab-separated-values",
-    "xml": "application/xml", "json": "application/json", "txt": "text/plain",
-    "md": "text/markdown", "markdown": "text/markdown", "yaml": "application/yaml", "yml": "application/yaml",
-    "wav": "audio/wav", "mp3": "audio/mpeg", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac",
-    "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm", "avi": "video/x-msvideo",
-    "mkv": "video/x-matroska", "3gp": "video/3gpp",
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "heic": "image/heic",
+    "heif": "image/heif",
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+    "tsv": "text/tab-separated-values",
+    "xml": "application/xml",
+    "json": "application/json",
+    "txt": "text/plain",
+    "md": "text/markdown",
+    "markdown": "text/markdown",
+    "yaml": "application/yaml",
+    "yml": "application/yaml",
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "ogg": "audio/ogg",
+    "flac": "audio/flac",
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "webm": "video/webm",
+    "avi": "video/x-msvideo",
+    "mkv": "video/x-matroska",
+    "3gp": "video/3gpp",
 }
 
 
@@ -70,7 +91,9 @@ def file(src: str, *, filename: Optional[str] = None, format: Optional[str] = No
 
 def audio(src: str, *, format: Optional[str] = None) -> Dict[str, Any]:
     """Audio content part via ``input_audio`` (``audio_url`` is a dead field in Interfaze)."""
-    fmt = format or _ext_of(src) or "wav"
+    mime = _mime_from_data_url(src)
+    _assert_allowed(mime or _EXT_MIME.get(_ext_of(src) or ""))
+    fmt = format or (mime.split("/", 1)[-1] if mime else _ext_of(src)) or "wav"
     return {"type": "input_audio", "input_audio": {"data": src, "format": fmt}}
 
 
@@ -85,5 +108,5 @@ def auto_part(src: str, *, filename: Optional[str] = None, format: Optional[str]
     if mime and mime.startswith("image/"):
         return image(src)
     if mime and mime.startswith("audio/"):
-        return audio(src, format=format) if format else audio(src)
+        return audio(src, format=format or mime.split("/", 1)[-1])
     return file(src, filename=filename, format=format)

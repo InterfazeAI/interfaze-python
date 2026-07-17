@@ -27,6 +27,16 @@ def test_audio_uses_input_audio():
     assert part["type"] == "input_audio" and part["input_audio"]["format"] == "wav"
 
 
+def test_audio_data_uri_uses_mime_subtype():
+    assert inputs.audio("data:audio/mpeg;base64,AAAA")["input_audio"]["format"] == "mpeg"
+    assert inputs.audio("data:audio/wav;base64,AAAA")["input_audio"]["format"] == "wav"
+
+
+def test_audio_rejects_blacklisted_data_uri():
+    with pytest.raises(InterfazeError):
+        inputs.audio("data:image/gif;base64,AAAA")
+
+
 def test_gif_rejected():
     with pytest.raises(InterfazeError):
         inputs.image("https://x.com/a.gif")
@@ -51,6 +61,11 @@ def test_auto_part_routing():
     assert inputs.auto_part("https://x.com/a.wav")["type"] == "input_audio"
     assert inputs.auto_part("https://x.com/a.pdf")["type"] == "file"
     assert inputs.auto_part("https://x.com/a.mp4")["type"] == "file"
+
+
+def test_auto_part_forwards_audio_data_uri_format():
+    part = inputs.auto_part("data:audio/mpeg;base64,AAAA")
+    assert part["type"] == "input_audio" and part["input_audio"]["format"] == "mpeg"
 
 
 # ---- client surface ----
