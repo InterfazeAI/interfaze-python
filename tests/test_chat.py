@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import asyncio
+import json
+
+import pytest
+import respx
+from conftest import (
+    BASIC,
+    JSON_OBJECT,
+    PRECONTEXT,
+    REASONING,
+    TASK_OCR,
+    TOOL_CALL,
+    last_body,
+    last_headers,
+    mock_json,
+)
+
+from interfaze import AsyncInterfaze, Interfaze, InterfazeChatCompletion, InterfazeError
+
+WEATHER_TOOL = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+    }
+]
+
+
+# ---- request serialization ----
+@respx.mock
+def test_base_url_and_model_default():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "hi"}])
+    assert route.calls.last.request.url == "https://api.interfaze.ai/v1/chat/completions"
+    assert last_body(route)["model"] == "interfaze-beta"
+
+
+@respx.mock
+def test_task_serialization():
+    route = mock_json(TASK_OCR)
+    Interfaze(api_key="t").chat.completions.create(task="ocr", messages=[{"role": "user", "content": "x"}])
+    body = last_body(route)
+    assert body["messages"][0]["role"] == "system" and "<task>ocr</task>" in body["messages"][0]["content"]
+    assert body["response_format"]["json_schema"]["schema"] == {}
+
+
+@respx.mock
+def test_guard_serialization():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(
+        guard=["S1", "S12_IMAGE"], messages=[{"role": "user", "content": "x"}]
+    )
+    assert "<guard>S1, S12_IMAGE</guard>" in last_body(route)["messages"][0]["content"]
+
+
+def test_task_plus_nonempty_schema_raises():
+    with pytest.raises(InterfazeError, match="non-empty"):
+        Interfaze(api_key="t").chat.completions.create(
+            task="ocr",
+            messages=[{"role": "user", "content": "x"}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "s",
+                    "schema": {"type": "object", "properties": {"a": {"type": "string"}}},
+                },
+            },
+        )
+
+
+@respx.mock
+def test_control_headers():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t", show_additional_info=True, bypass_cache=True).chat.completions.create(
+        messages=[{"role": "user", "content": "x"}]
+    )
+    h = last_headers(route)
+    assert h["x-show-additional-info"] == "true" and h["x-bypass-cache"] == "true"
+
+
+@respx.mock
+def test_reasoning_effort_on_and_extra_body_forwarded():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(
+        reasoning_effort="on", messages=[{"role": "user", "content": "x"}], extra_body={"custom": True}
+    )
+    body = last_body(route)
+    assert body["reasoning_effort"] == "on" and body["custom"] is True
+
+
+# ---- response mapping ----
+@respx.mock
+def test_precontext_and_vcache_typed():
+    mock_json(PRECONTEXT)
+    r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    assert isinstance(r, InterfazeChatCompletion)
+    assert r.precontext and r.precontext[0].name == "ocr"
+    assert isinstance(r.vcache, bool)
+
+
+@respx.mock
+def test_reasoning_typed():
+    mock_json(REASONING)
+    r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    assert r.reasoning and "Rayleigh" in r.reasoning
+
+
+@respx.mock
+def test_json_object_fence_stripped():
+    mock_json(JSON_OBJECT)
+    r = Interfaze(api_key="t").chat.completions.create(
+        messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+    )
+    content = r.choices[0].message.content
+    assert not content.strip().startswith("```")
+    assert json.loads(content)["city"] == "Tokyo"
+
+
+@respx.mock
+def test_tools_content_none():
+    mock_json(TOOL_CALL)
+    r = Interfaze(api_key="t").chat.completions.create(
+        messages=[{"role": "user", "content": "weather?"}], tools=WEATHER_TOOL, tool_choice="auto"
+    )
+    assert r.choices[0].finish_reason == "tool_calls"
+    assert r.choices[0].message.content is None
+    assert r.choices[0].message.tool_calls[0].function.name == "get_weather"
+
+
+# ---- async ----
+@respx.mock
+def test_async_mapping():
+    mock_json(PRECONTEXT)
+
+    async def go():
+        return await AsyncInterfaze(api_key="t").chat.completions.create(
+            messages=[{"role": "user", "content": "x"}]
+        )
+
+    r = asyncio.run(go())
+    assert isinstance(r, InterfazeChatCompletion) and r.precontext[0].name == "ocr"

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "interfaze"
+version = "0.1.0"
+description = "Official Interfaze SDK."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Interfaze" }]
+keywords = ["interfaze", "openai", "ai", "ocr", "speech-to-text", "web-search", "sdk"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Typing :: Typed",
+]
+dependencies = ["openai>=2,<3"]
+
+[project.urls]
+Homepage = "https://interfaze.ai"
+Repository = "https://github.com/interfaze/interfaze-py"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "respx>=0.21", "mypy>=1.11", "ruff>=0.6", "pydantic>=2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/interfaze"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/interfaze"]

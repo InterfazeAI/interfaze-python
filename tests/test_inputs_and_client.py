@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import pytest
+
+from interfaze import Interfaze, InterfazeError, inputs
+
+
+# ---- inputs ----
+def test_image_part():
+    assert inputs.image("https://x.com/a.png") == {
+        "type": "image_url",
+        "image_url": {"url": "https://x.com/a.png"},
+    }
+
+
+def test_file_part():
+    part = inputs.file("https://x.com/d.pdf", filename="d.pdf")
+    assert (
+        part["type"] == "file"
+        and part["file"]["file_data"] == "https://x.com/d.pdf"
+        and part["file"]["filename"] == "d.pdf"
+    )
+
+
+def test_audio_uses_input_audio():
+    part = inputs.audio("https://x.com/a.wav")
+    assert part["type"] == "input_audio" and part["input_audio"]["format"] == "wav"
+
+
+def test_gif_rejected():
+    with pytest.raises(InterfazeError):
+        inputs.image("https://x.com/a.gif")
+
+
+def test_avif_rejected_via_format():
+    with pytest.raises(InterfazeError):
+        inputs.file("https://x.com/a", format="image/avif")
+
+
+def test_data_url_base64():
+    assert inputs.data_url(b"hi", "text/plain") == "data:text/plain;base64,aGk="
+
+
+def test_data_url_gif_rejected():
+    with pytest.raises(InterfazeError):
+        inputs.data_url(b"x", "image/gif")
+
+
+def test_auto_part_routing():
+    assert inputs.auto_part("https://x.com/a.png")["type"] == "image_url"
+    assert inputs.auto_part("https://x.com/a.wav")["type"] == "input_audio"
+    assert inputs.auto_part("https://x.com/a.pdf")["type"] == "file"
+    assert inputs.auto_part("https://x.com/a.mp4")["type"] == "file"
+
+
+# ---- client surface ----
+def test_curated_surface():
+    c = Interfaze(api_key="t")
+    assert hasattr(c, "chat") and hasattr(c, "models") and hasattr(c, "tasks")
+    assert not hasattr(c, "embeddings") and not hasattr(c, "responses")
+    assert hasattr(c, "openai")  # escape hatch
+
+
+def test_missing_key_raises(monkeypatch):
+    monkeypatch.delenv("INTERFAZE_API_KEY", raising=False)
+    with pytest.raises(InterfazeError, match="INTERFAZE_API_KEY"):
+        Interfaze()
