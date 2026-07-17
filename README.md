@@ -78,18 +78,23 @@ res = interfaze.chat.completions.create(
 
 ## Streaming
 
+For live rendering, iterate `text_deltas()` — it yields visible text only, stripping Interfaze's
+inline `<think>`/`<precontext>` side-channels:
+
 ```python
 stream = interfaze.chat.completions.stream(
     messages=[{"role": "user", "content": "Tell me a story."}],
 )
-for chunk in stream:
-    print(chunk.choices[0].delta.content or "", end="")
+for text in stream.text_deltas():
+    print(text, end="")
 final = stream.get_final_completion()
 print(final.reasoning, final.precontext)
 ```
 
-> Plain `create(stream=True)` also works and returns the raw chunk iterator; `.stream()` adds
-> accumulation and surfaces `reasoning`/`precontext`.
+> Iterating the stream directly (`for chunk in stream`) or the plain `create(stream=True)` path
+> yields **raw** chunks whose `delta.content` still contains the `<think>`/`<precontext>` tags — use
+> `text_deltas()` for anything user-facing. `.stream()` also accumulates and surfaces
+> `reasoning`/`precontext` on `get_final_completion()`.
 
 ## Inputs
 
