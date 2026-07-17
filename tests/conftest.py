@@ -42,8 +42,7 @@ BASIC = completion("Hi!")
 PRECONTEXT = completion(
     "Total: $12.34", precontext=[{"name": "ocr", "result": {"extracted_text": "Walmart ... TOTAL 12.34"}}]
 )
-# Mixed precontext: a well-formed task entry + a RAW model tool-call entry (as the server
-# appends on any tool / run_code turn) — {toolCallId, toolName, input}, no name/result.
+# A task entry plus a raw tool-call entry (server-appended on tool/run_code turns).
 MIXED_PRECONTEXT = completion(
     "Ran the code.",
     precontext=[

@@ -36,38 +36,21 @@ GuardCode = Literal[
     "ALL",
 ]
 
-# Interfaze accepts these reasoning levels (wider than the OpenAI enum).
 ReasoningEffort = Literal["minimal", "low", "medium", "high", "on", "off", "auto"]
 
 
 class Precontext(BaseModel):
-    """One internal task's raw output, surfaced in ``response.precontext``.
-
-    Lenient by design: when the final model calls a tool (user-defined tools or internal
-    action tools like ``run_code``), the server appends the raw tool-call objects
-    ``{toolCallId, toolName, input}`` here — with no ``name``/``result``. So both fields are
-    optional and unknown keys are preserved (openai-python's "validate loosely, preserve
-    everything" rule), and re-validating the completion never raises on a tool-call turn.
-    """
+    """One internal task's output; lenient since raw tool-call entries omit name/result."""
 
     model_config = ConfigDict(extra="allow")
-
     name: Optional[str] = None
     result: Any = None
 
 
 class InterfazeChatCompletion(ChatCompletion):
-    """A chat completion extended with the fields Interfaze adds.
-
-    openai-python already preserves these as pydantic extras (``extra='allow'``); this
-    subclass merely gives them declared, typed attributes for IDE/type-checker support.
-    """
+    """ChatCompletion plus Interfaze extras: precontext, reasoning, vcache, debug."""
 
     precontext: Optional[List[Precontext]] = None
-    """Present when internal tools ran (OCR / web search / scrape / STT / forecast / …)."""
     reasoning: Optional[str] = None
-    """Reasoning text — present with ``reasoning_effort='high'`` and no schema."""
     vcache: bool = False
-    """Whether the semantic cache was hit."""
     debug: Optional[Any] = None
-    """Admin-only debug payload (requires ``admin_key``)."""
