@@ -121,6 +121,24 @@ URLs and base64 work; raw `bytes` do **not** (must be base64-encoded — this SD
 - Control options: `Interfaze(show_additional_info=..., bypass_moe=..., bypass_cache=..., admin_key=...)`.
 - Custom params: pass `extra_body={...}` / `extra_headers={...}` straight through to the request.
 
+## LangChain
+
+`pip install interfaze[langchain]` adds a chat model that points at Interfaze and surfaces the
+extras the stock `ChatOpenAI` drops:
+
+```python
+from interfaze.langchain import ChatInterfaze
+
+llm = ChatInterfaze()  # reads INTERFAZE_API_KEY
+res = llm.invoke("Summarize the latest AI news")
+print(res.content)
+print(res.response_metadata.get("precontext"), res.response_metadata.get("vcache"))
+```
+
+`precontext`/`reasoning`/`vcache` land on `response_metadata`; `{"type": "video", ...}` content
+blocks are accepted; inline `<think>`/`<precontext>` tags are stripped. Send request-side
+precontext with `ChatInterfaze(precontext=[...])`.
+
 ## Good to know
 
 - Interfaze implements `chat.completions` and `models`; other OpenAI endpoints are not exposed.
