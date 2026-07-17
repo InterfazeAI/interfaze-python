@@ -48,7 +48,19 @@ def prepare(
     tags = " ".join(
         t for t in (f"<task>{task}</task>" if task else None, guard_tag(guard) if guard else None) if t
     )
-    msgs = [{"role": "system", "content": tags}, *messages] if tags else list(messages)
+    msgs = list(messages)
+    if tags:
+        idx = next(
+            (i for i, m in enumerate(msgs) if isinstance(m, dict) and m.get("role") == "system"),
+            None,
+        )
+        if idx is not None and isinstance(msgs[idx].get("content"), str):
+            merged = dict(msgs[idx])
+            existing = merged["content"]
+            merged["content"] = f"{tags}\n{existing}" if existing else tags
+            msgs[idx] = merged
+        else:
+            msgs = [{"role": "system", "content": tags}, *msgs]
     strip = isinstance(rf, dict) and rf.get("type") == "json_object"
     return msgs, (model or INTERFAZE_MODEL), rf, strip
 

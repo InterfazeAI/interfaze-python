@@ -12,13 +12,28 @@ TASK_NAMES = (
     "scraper",
     "translate",
     "speech_to_text",
+    "forecast",
 )
 
 # Guardrail categories (ALL enables everything).
 GUARD_CODES = (
-    "S1", "S2", "S3", "S4", "S5", "S6", "S7",
-    "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-    "S1_IMAGE", "S12_IMAGE", "S15_IMAGE",
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
+    "S8",
+    "S9",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S1_IMAGE",
+    "S12_IMAGE",
+    "S15_IMAGE",
     "ALL",
 )
 
