@@ -1,4 +1,5 @@
-"""Official Interfaze SDK — a typed wrapper over the OpenAI SDK."""
+"""Official Interfaze SDK for Python."""
+
 from __future__ import annotations
 
 from openai import (
