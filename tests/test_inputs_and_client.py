@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import base64
+
 import pytest
+from assets import ASSETS
 
 from interfaze import AsyncInterfaze, Interfaze, InterfazeError, inputs
 
 
 # ---- inputs ----
 def test_image_part():
-    assert inputs.image("https://x.com/a.png") == {
+    assert inputs.image(ASSETS["image"]) == {
         "type": "image_url",
-        "image_url": {"url": "https://x.com/a.png"},
+        "image_url": {"url": ASSETS["image"]},
     }
 
 
 def test_file_part():
-    part = inputs.file("https://x.com/d.pdf", filename="d.pdf")
+    part = inputs.file(ASSETS["pdf"], filename="attention.pdf")
     assert (
         part["type"] == "file"
-        and part["file"]["file_data"] == "https://x.com/d.pdf"
-        and part["file"]["filename"] == "d.pdf"
+        and part["file"]["file_data"] == ASSETS["pdf"]
+        and part["file"]["filename"] == "attention.pdf"
     )
 
 
@@ -36,7 +39,7 @@ def test_file_unknown_ext_omits_format():
 
 
 def test_audio_uses_input_audio():
-    part = inputs.audio("https://x.com/a.wav")
+    part = inputs.audio(ASSETS["audio"])
     assert part["type"] == "input_audio" and part["input_audio"]["format"] == "wav"
 
 
@@ -61,14 +64,26 @@ def test_base64_image_part():
     assert part["type"] == "image_url" and part["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+def test_file_part_with_explicit_format_included():
+    part = inputs.file(ASSETS["pdf"], format="application/pdf")
+    assert part["file"]["format"] == "application/pdf"
+
+
+def test_video_part_rides_on_file():
+    part = inputs.video(ASSETS["video"], filename="clip.mp4")
+    assert part["type"] == "file"
+    assert part["file"]["file_data"] == ASSETS["video"]
+    assert part["file"]["filename"] == "clip.mp4"
+
+
 def test_gif_rejected():
     with pytest.raises(InterfazeError):
-        inputs.image("https://x.com/a.gif")
+        inputs.image("https://jigsawstack.com/preview/example.gif")
 
 
 def test_avif_rejected_via_format():
     with pytest.raises(InterfazeError):
-        inputs.file("https://x.com/a", format="image/avif")
+        inputs.file(ASSETS["image"], format="image/avif")
 
 
 def test_data_url_base64():
@@ -81,16 +96,70 @@ def test_data_url_gif_rejected():
 
 
 def test_auto_part_routing():
-    assert inputs.auto_part("https://x.com/a.png")["type"] == "image_url"
-    assert inputs.auto_part("https://x.com/a.wav")["type"] == "input_audio"
-    assert inputs.auto_part("https://x.com/a.pdf")["type"] == "file"
-    assert inputs.auto_part("https://x.com/a.mp4")["type"] == "file"
-    assert inputs.auto_part("https://x.com/a.mp4")["file"]["format"] == "video/mp4"
+    assert inputs.auto_part(ASSETS["image"])["type"] == "image_url"
+    assert inputs.auto_part(ASSETS["audio"])["type"] == "input_audio"
+    assert inputs.auto_part(ASSETS["csv"])["type"] == "file"
+    assert inputs.auto_part(ASSETS["video"])["type"] == "file"
+    assert inputs.auto_part(ASSETS["video"])["file"]["format"] == "video/mp4"
+    assert inputs.auto_part(ASSETS["pdf"], filename="paper.pdf")["type"] == "file"
 
 
 def test_auto_part_forwards_audio_data_uri_format():
     part = inputs.auto_part("data:audio/mpeg;base64,AAAA")
     assert part["type"] == "input_audio" and part["input_audio"]["format"] == "mpeg"
+
+
+def test_auto_part_extensionless_url_falls_through_to_file():
+    """ASSETS["pdf"] (bare arxiv URL) and ASSETS["gui"] (query-string-only unsplash URL) have
+    no recognizable file extension, so auto_part can't sniff a mime type and falls through to
+    a generic `file` part — even for `gui`, which is actually an image."""
+    assert inputs.auto_part(ASSETS["pdf"])["type"] == "file"
+    assert inputs.auto_part(ASSETS["gui"])["type"] == "file"
+
+
+def test_unknown_extension_file_part_has_no_format_key():
+    part = inputs.file("https://example.com/dataset.xyz123")
+    assert "format" not in part["file"]
+    assert "filename" not in part["file"]
+
+
+def test_malformed_data_url_mime_none_does_not_raise():
+    part = inputs.image("data:;base64,YWJj")
+    assert part == {"type": "image_url", "image_url": {"url": "data:;base64,YWJj"}}
+
+
+def test_from_path_reads_file_as_data_url(tmp_path):
+    p = tmp_path / "note.txt"
+    p.write_bytes(b"hello world")
+    result = inputs.from_path(p)
+    assert result.startswith("data:text/plain;base64,")
+    encoded = result.split(",", 1)[1]
+    assert base64.b64decode(encoded) == b"hello world"
+
+
+def test_from_path_mime_by_extension(tmp_path):
+    p = tmp_path / "photo.png"
+    p.write_bytes(b"\x89PNG\r\n\x1a\n")
+    assert inputs.from_path(p).startswith("data:image/png;base64,")
+
+
+def test_from_path_unknown_extension_defaults_octet_stream(tmp_path):
+    p = tmp_path / "file.someunknownext"
+    p.write_bytes(b"data")
+    assert inputs.from_path(p).startswith("data:application/octet-stream;base64,")
+
+
+def test_from_path_blacklisted_ext_raises(tmp_path):
+    p = tmp_path / "anim.gif"
+    p.write_bytes(b"GIF89a")
+    with pytest.raises(InterfazeError):
+        inputs.from_path(p)
+
+
+def test_from_path_accepts_str_path(tmp_path):
+    p = tmp_path / "note.md"
+    p.write_bytes(b"# hi")
+    assert inputs.from_path(str(p)).startswith("data:text/markdown;base64,")
 
 
 # ---- client surface ----
