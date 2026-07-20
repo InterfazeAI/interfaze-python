@@ -30,6 +30,67 @@ def strip_side_channels(content: str) -> Tuple[str, Optional[str], Optional[List
     return text.strip(), ("\n".join(thinks) if thinks else None), (pre or None)
 
 
+_SIDE_OPEN = ("<think>", "<precontext>")
+_SIDE_CLOSE = {"<think>": "</think>", "<precontext>": "</precontext>"}
+
+
+def _suffix_prefix_len(s: str, tag: str) -> int:
+    for k in range(min(len(s), len(tag) - 1), 0, -1):
+        if s[-k:] == tag[:k]:
+            return k
+    return 0
+
+
+class _SideChannelFilter:
+    """Strip inline ``<think>``/``<precontext>`` blocks from streamed content, chunk by chunk.
+
+    Buffers a trailing partial that may be a split tag; never withholds text that cannot be a tag.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._close: Optional[str] = None
+
+    def feed(self, text: str) -> str:
+        self._buf += text
+        out: List[str] = []
+        while self._buf:
+            if self._close is None:
+                lt = self._buf.find("<")
+                if lt == -1:
+                    out.append(self._buf)
+                    self._buf = ""
+                    break
+                if lt:
+                    out.append(self._buf[:lt])
+                    self._buf = self._buf[lt:]
+                opened = next((t for t in _SIDE_OPEN if self._buf.startswith(t)), None)
+                if opened:
+                    self._close = _SIDE_CLOSE[opened]
+                    self._buf = self._buf[len(opened) :]
+                    continue
+                if any(t.startswith(self._buf) for t in _SIDE_OPEN):
+                    break
+                out.append("<")
+                self._buf = self._buf[1:]
+            else:
+                end = self._buf.find(self._close)
+                if end == -1:
+                    keep = _suffix_prefix_len(self._buf, self._close)
+                    self._buf = self._buf[len(self._buf) - keep :] if keep else ""
+                    break
+                self._buf = self._buf[end + len(self._close) :]
+                self._close = None
+        return "".join(out)
+
+    def flush(self) -> str:
+        if self._close is not None:
+            self._buf = ""
+            return ""
+        rest, self._buf = self._buf, ""
+        return rest
+
+
 class _State:
     def __init__(self) -> None:
         self.content = ""
@@ -117,6 +178,29 @@ class InterfazeStream:
             yield chunk
         self._done = True
 
+    def text_deltas(self) -> "Iterator[str]":
+        """Yield visible text only, stripping ``<think>``/``<precontext>`` across chunk boundaries.
+
+        Use this (not raw ``create(stream=True)`` deltas) for live rendering. ``reasoning`` and
+        ``precontext`` remain available on ``get_final_completion()``.
+        """
+        if self._started:
+            raise InterfazeError("This stream has already been consumed.")
+        self._started = True
+        filt = _SideChannelFilter()
+        for chunk in self._client.chat.completions.create(stream=True, **self._kwargs):
+            self._state.accumulate(chunk)
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta and isinstance(delta.content, str) and delta.content:
+                    visible = filt.feed(delta.content)
+                    if visible:
+                        yield visible
+        tail = filt.flush()
+        if tail:
+            yield tail
+        self._done = True
+
     @property
     def text(self) -> str:
         return strip_side_channels(self._state.content)[0]
@@ -158,6 +242,30 @@ class AsyncInterfazeStream:
         async for chunk in stream:
             self._state.accumulate(chunk)
             yield chunk
+        self._done = True
+
+    async def text_deltas(self) -> "AsyncIterator[str]":
+        """Yield visible text only, stripping ``<think>``/``<precontext>`` across chunk boundaries.
+
+        Use this (not raw ``create(stream=True)`` deltas) for live rendering. ``reasoning`` and
+        ``precontext`` remain available on ``get_final_completion()``.
+        """
+        if self._started:
+            raise InterfazeError("This stream has already been consumed.")
+        self._started = True
+        filt = _SideChannelFilter()
+        stream = await self._client.chat.completions.create(stream=True, **self._kwargs)
+        async for chunk in stream:
+            self._state.accumulate(chunk)
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta and isinstance(delta.content, str) and delta.content:
+                    visible = filt.feed(delta.content)
+                    if visible:
+                        yield visible
+        tail = filt.flush()
+        if tail:
+            yield tail
         self._done = True
 
     async def get_final_completion(self) -> InterfazeChatCompletion:
