@@ -91,7 +91,9 @@ def file(src: str, *, filename: Optional[str] = None, format: Optional[str] = No
 
 def audio(src: str, *, format: Optional[str] = None) -> Dict[str, Any]:
     """Audio content part via ``input_audio`` (``audio_url`` is a dead field in Interfaze)."""
-    fmt = format or _ext_of(src) or "wav"
+    mime = _mime_from_data_url(src)
+    _assert_allowed(mime or _EXT_MIME.get(_ext_of(src) or ""))
+    fmt = format or (mime.split("/", 1)[-1] if mime else _ext_of(src)) or "wav"
     return {"type": "input_audio", "input_audio": {"data": src, "format": fmt}}
 
 
@@ -106,5 +108,5 @@ def auto_part(src: str, *, filename: Optional[str] = None, format: Optional[str]
     if mime and mime.startswith("image/"):
         return image(src)
     if mime and mime.startswith("audio/"):
-        return audio(src, format=format) if format else audio(src)
+        return audio(src, format=format or mime.split("/", 1)[-1])
     return file(src, filename=filename, format=format)
