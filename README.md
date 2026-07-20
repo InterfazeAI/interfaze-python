@@ -124,6 +124,25 @@ URLs and base64 work; raw `bytes` do **not** (must be base64-encoded — this SD
 - `n`, `seed`, `stop`, penalties, `logprobs`, `tool_choice`, `top_k` are ignored by Interfaze.
 - The underlying OpenAI client is available at `interfaze.openai`.
 
+## Compatibility notes
+
+Drop-in for the OpenAI **chat completions** flow (`create`, response types, errors,
+`create(stream=True)`, `models`), with a few behaviors worth knowing when migrating:
+
+- **`.stream()` yields chunks, not events.** OpenAI's `.stream()` helper yields event objects
+  (`event.type == "content.delta"`); ours yields raw `ChatCompletionChunk`s (like
+  `create(stream=True)`) plus `get_final_completion()`. Iterate `chunk.choices[0].delta`, not
+  `event.type`.
+- **Returned text is lightly post-processed.** `json_object` content is unwrapped from its
+  ```` ```json ```` fence, and streamed `<think>`/`<precontext>` side-channels are pulled into
+  `reasoning`/`precontext`, so `message.content` may not be byte-identical to the raw wire response.
+- **`inputs.*` accept https URLs** (Interfaze fetches them server-side). Those parts are valid for
+  Interfaze but **not** portable to OpenAI/Azure, which require base64 in `file`/`input_audio` parts.
+- **Escape hatch:** anything not on the wrapper — `chat.completions.parse()`, `.with_raw_response`,
+  `.with_streaming_response` — is on the underlying client at `interfaze.openai`.
+- **`tasks.*` return the extracted result** (a `dict`/`list`/`str`), not a `ChatCompletion` — e.g.
+  `tasks.ocr(...)` returns the OCR dict directly.
+
 ## License
 
 MIT

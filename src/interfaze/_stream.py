@@ -39,6 +39,8 @@ class _State:
         self.model = ""
         self.created = 0
         self.tool_calls: Dict[int, Dict[str, str]] = {}
+        self.usage: Any = None
+        self.system_fingerprint: Optional[str] = None
 
     def accumulate(self, chunk: ChatCompletionChunk) -> None:
         if not self.id and chunk.id:
@@ -47,6 +49,10 @@ class _State:
             self.model = chunk.model
         if not self.created and chunk.created:
             self.created = chunk.created
+        if chunk.usage:
+            self.usage = chunk.usage
+        if chunk.system_fingerprint:
+            self.system_fingerprint = chunk.system_fingerprint
         if not chunk.choices:
             return
         choice = chunk.choices[0]
@@ -85,6 +91,10 @@ class _State:
             ],
             "vcache": False,
         }
+        if self.usage is not None:
+            data["usage"] = self.usage.model_dump()
+        if self.system_fingerprint:
+            data["system_fingerprint"] = self.system_fingerprint
         if reasoning:
             data["reasoning"] = reasoning
         if precontext:

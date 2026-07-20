@@ -20,7 +20,7 @@ dependencies = ["openai>=2,<3"]
 
 [project.urls]
 Homepage = "https://interfaze.ai"
-Repository = "https://github.com/interfaze/interfaze-py"
+Repository = "https://github.com/InterfazeAI/interfaze-python"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "respx>=0.21", "mypy>=1.11", "ruff>=0.6", "pydantic>=2"]

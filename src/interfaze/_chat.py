@@ -62,7 +62,11 @@ def to_interfaze(raw: ChatCompletion, strip_fence: bool) -> InterfazeChatComplet
                 msg["content"] = strip_json_fence(msg["content"])
         except (KeyError, IndexError, TypeError):
             pass
-    return InterfazeChatCompletion.model_validate(data)
+    result = InterfazeChatCompletion.model_validate(data)
+    request_id = getattr(raw, "_request_id", None)
+    if request_id is not None:
+        result._request_id = request_id
+    return result
 
 
 class _CompletionsBase:
