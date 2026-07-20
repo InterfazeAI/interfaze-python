@@ -78,23 +78,22 @@ res = interfaze.chat.completions.create(
 
 ## Streaming
 
-For live rendering, iterate `text_deltas()` — it yields visible text only, stripping Interfaze's
-inline `<think>`/`<precontext>` side-channels:
+`.stream()` yields OpenAI-style events (`content.delta`, `content.done`, tool-call events, …) with
+Interfaze's inline `<think>`/`<precontext>` side-channels stripped from the content events:
 
 ```python
 stream = interfaze.chat.completions.stream(
     messages=[{"role": "user", "content": "Tell me a story."}],
 )
-for text in stream.text_deltas():
-    print(text, end="")
+for event in stream:
+    if event.type == "content.delta":
+        print(event.delta, end="")
 final = stream.get_final_completion()
 print(final.reasoning, final.precontext)
 ```
 
-> Iterating the stream directly (`for chunk in stream`) or the plain `create(stream=True)` path
-> yields **raw** chunks whose `delta.content` still contains the `<think>`/`<precontext>` tags — use
-> `text_deltas()` for anything user-facing. `.stream()` also accumulates and surfaces
-> `reasoning`/`precontext` on `get_final_completion()`.
+> Just want clean tokens? `stream.text_deltas()` yields visible text only. Plain
+> `create(stream=True)` returns the raw chunk iterator (side-channel tags **not** stripped).
 
 ## Inputs
 
@@ -151,6 +150,26 @@ precontext with `ChatInterfaze(precontext=[...])`.
   connections are kept alive server-side, whereas a long buffered request can be dropped by an
   intermediary mid-job.
 - The underlying OpenAI client is available at `interfaze.openai`.
+
+## Compatibility notes
+
+Drop-in for the OpenAI **chat completions** flow (`create`, response types, errors,
+`create(stream=True)`, `models`), with a few behaviors worth knowing when migrating:
+
+- **`.stream()` yields OpenAI-style events**, drop-in with OpenAI's streaming helper — iterate
+  `event.type` (`"content.delta"` with `.delta`, `"content.done"`,
+  `"tool_calls.function.arguments.delta"`/`.done`, …), same as `client.chat.completions.stream()`
+  on the OpenAI SDK. `create(stream=True)` still gives the raw `ChatCompletionChunk` iterator, and
+  `stream.text_deltas()` gives just the clean visible text if you don't need events.
+- **Returned text is lightly post-processed.** `json_object` content is unwrapped from its
+  ```` ```json ```` fence, and streamed `<think>`/`<precontext>` side-channels are pulled into
+  `reasoning`/`precontext`, so `message.content` may not be byte-identical to the raw wire response.
+- **`inputs.*` accept https URLs** (Interfaze fetches them server-side). Those parts are valid for
+  Interfaze but **not** portable to OpenAI/Azure, which require base64 in `file`/`input_audio` parts.
+- **Escape hatch:** anything not on the wrapper — `chat.completions.parse()`, `.with_raw_response`,
+  `.with_streaming_response` — is on the underlying client at `interfaze.openai`.
+- **`tasks.*` return the extracted result** (a `dict`/`list`/`str`), not a `ChatCompletion` — e.g.
+  `tasks.ocr(...)` returns the OCR dict directly.
 
 ## License
 
