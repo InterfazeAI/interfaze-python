@@ -22,6 +22,19 @@ def test_file_part():
     )
 
 
+def test_file_forwards_computed_mime():
+    assert inputs.file("https://x.com/d.pdf")["file"]["format"] == "application/pdf"
+
+
+def test_video_forwards_mp4_mime():
+    part = inputs.video("https://x.com/clip.mp4")
+    assert part["type"] == "file" and part["file"]["format"] == "video/mp4"
+
+
+def test_file_unknown_ext_omits_format():
+    assert "format" not in inputs.file("https://x.com/page")["file"]
+
+
 def test_audio_uses_input_audio():
     part = inputs.audio("https://x.com/a.wav")
     assert part["type"] == "input_audio" and part["input_audio"]["format"] == "wav"
@@ -61,6 +74,7 @@ def test_auto_part_routing():
     assert inputs.auto_part("https://x.com/a.wav")["type"] == "input_audio"
     assert inputs.auto_part("https://x.com/a.pdf")["type"] == "file"
     assert inputs.auto_part("https://x.com/a.mp4")["type"] == "file"
+    assert inputs.auto_part("https://x.com/a.mp4")["file"]["format"] == "video/mp4"
 
 
 def test_auto_part_forwards_audio_data_uri_format():

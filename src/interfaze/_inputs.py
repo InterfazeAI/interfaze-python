@@ -84,8 +84,8 @@ def file(src: str, *, filename: Optional[str] = None, format: Optional[str] = No
     f: Dict[str, Any] = {"file_data": src}
     if filename:
         f["filename"] = filename
-    if format:
-        f["format"] = format
+    if mime:
+        f["format"] = mime
     return {"type": "file", "file": f}
 
 
