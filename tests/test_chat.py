@@ -8,6 +8,7 @@ import respx
 from conftest import (
     BASIC,
     JSON_OBJECT,
+    MIXED_PRECONTEXT,
     PRECONTEXT,
     REASONING,
     TASK_OCR,
@@ -107,6 +108,19 @@ def test_precontext_and_vcache_typed():
 
 
 @respx.mock
+def test_precontext_tolerates_raw_toolcall_entries():
+    # raw tool-call entries in precontext must not raise.
+    mock_json(MIXED_PRECONTEXT)
+    r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "run code"}])
+    assert isinstance(r, InterfazeChatCompletion)
+    assert r.precontext is not None
+    assert len(r.precontext) == 2
+    assert r.precontext[0].name == "ocr" and r.precontext[0].result == {"extracted_text": "x"}
+    assert r.precontext[1].name is None
+    assert (r.precontext[1].model_extra or {}).get("toolName") == "run_code"
+
+
+@respx.mock
 def test_reasoning_typed():
     mock_json(REASONING)
     r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
@@ -120,6 +134,7 @@ def test_json_object_fence_stripped():
         messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
     )
     content = r.choices[0].message.content
+    assert content is not None
     assert not content.strip().startswith("```")
     assert json.loads(content)["city"] == "Tokyo"
 

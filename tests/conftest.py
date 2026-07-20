@@ -1,7 +1,9 @@
-"""Test fixtures mirroring REAL Interfaze wire responses (observed live).
+"""Test fixtures mirroring Interfaze wire responses (observed live).
 
-Kept faithful to the actual shapes: `vcache` always present, `precontext` a list of
-{name,result}, task content = {name,result} JSON, json_object content ```json-fenced,
+Kept faithful to the actual shapes: `vcache` always present,
+`precontext` a list of {name,result},
+task content = {name,result} JSON,
+json_object content ```json-fenced,
 stream deltas role-less.
 """
 
@@ -15,7 +17,11 @@ import respx
 
 CHAT_URL = "https://api.interfaze.ai/v1/chat/completions"
 
-_USAGE = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
+_USAGE = {
+    "prompt_tokens": 5,
+    "completion_tokens": 3,
+    "total_tokens": 8,
+}
 
 
 def completion(
@@ -40,10 +46,20 @@ def completion(
 
 BASIC = completion("Hi!")
 PRECONTEXT = completion(
-    "Total: $12.34", precontext=[{"name": "ocr", "result": {"extracted_text": "Walmart ... TOTAL 12.34"}}]
+    "Total: $12.34",
+    precontext=[{"name": "ocr", "result": {"extracted_text": "Walmart ... TOTAL 12.34"}}],
+)
+# A task entry plus a raw tool-call entry (server-appended on tool/run_code turns).
+MIXED_PRECONTEXT = completion(
+    "Ran the code.",
+    precontext=[
+        {"name": "ocr", "result": {"extracted_text": "x"}},
+        {"toolCallId": "call_1", "toolName": "run_code", "input": {"code": "print(1)"}},
+    ],
 )
 REASONING = completion(
-    "The sky is blue because...", reasoning="Rayleigh scattering means shorter wavelengths..."
+    "The sky is blue because...",
+    reasoning="Rayleigh scattering means shorter wavelengths...",
 )
 JSON_OBJECT = completion('```json\n{\n  "city": "Tokyo",\n  "temp_c": 21\n}\n```')
 TASK_OCR = completion('{"name": "ocr", "result": {"extracted_text": "See back of receipt", "width": 800}}')

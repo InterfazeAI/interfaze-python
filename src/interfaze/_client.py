@@ -67,7 +67,9 @@ class Interfaze:
         self.openai = OpenAI(
             api_key=_resolve_key(api_key),
             base_url=base_url or INTERFAZE_BASE_URL,
-            default_headers=_build_headers(default_headers, show_additional_info, bypass_moe, bypass_cache, admin_key),
+            default_headers=_build_headers(
+                default_headers, show_additional_info, bypass_moe, bypass_cache, admin_key
+            ),
             **kwargs,
         )
         self.chat = Chat(self.openai)
@@ -93,7 +95,9 @@ class AsyncInterfaze:
         self.openai = AsyncOpenAI(
             api_key=_resolve_key(api_key),
             base_url=base_url or INTERFAZE_BASE_URL,
-            default_headers=_build_headers(default_headers, show_additional_info, bypass_moe, bypass_cache, admin_key),
+            default_headers=_build_headers(
+                default_headers, show_additional_info, bypass_moe, bypass_cache, admin_key
+            ),
             **kwargs,
         )
         self.chat = AsyncChat(self.openai)

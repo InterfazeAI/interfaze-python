@@ -60,7 +60,9 @@ class Tasks:
         return self._run("translate", f"Translate the following into {to}:\n\n{text}")
 
     def forecast(self, csv_source: str, *, periods: int = 10, unit: str = "days") -> Any:
-        r = self._c.create(messages=[{"role": "user", "content": _forecast_prompt(csv_source, periods, unit)}])
+        r = self._c.create(
+            messages=[{"role": "user", "content": _forecast_prompt(csv_source, periods, unit)}]
+        )
         for p in r.precontext or []:
             if p.name == "forecast":
                 return p.result
@@ -99,7 +101,9 @@ class AsyncTasks:
         return await self._run("translate", f"Translate the following into {to}:\n\n{text}")
 
     async def forecast(self, csv_source: str, *, periods: int = 10, unit: str = "days") -> Any:
-        r = await self._c.create(messages=[{"role": "user", "content": _forecast_prompt(csv_source, periods, unit)}])
+        r = await self._c.create(
+            messages=[{"role": "user", "content": _forecast_prompt(csv_source, periods, unit)}]
+        )
         for p in r.precontext or []:
             if p.name == "forecast":
                 return p.result
