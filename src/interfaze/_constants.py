@@ -12,6 +12,7 @@ TASK_NAMES = (
     "scraper",
     "translate",
     "speech_to_text",
+    "forecast",
 )
 
 # Guardrail categories (ALL enables everything).

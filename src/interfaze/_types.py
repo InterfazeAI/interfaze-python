@@ -13,6 +13,7 @@ TaskName = Literal[
     "scraper",
     "translate",
     "speech_to_text",
+    "forecast",
 ]
 
 GuardCode = Literal[

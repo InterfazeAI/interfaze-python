@@ -62,6 +62,33 @@ def test_guard_serialization():
     assert "<guard>S1, S12_IMAGE</guard>" in last_body(route)["messages"][0]["content"]
 
 
+@respx.mock
+def test_forecast_is_a_valid_task():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(
+        task="forecast", messages=[{"role": "user", "content": "x"}]
+    )
+    assert "<task>forecast</task>" in last_body(route)["messages"][0]["content"]
+
+
+@respx.mock
+def test_tags_merge_into_existing_system_message():
+    route = mock_json(TASK_OCR)
+    Interfaze(api_key="t").chat.completions.create(
+        task="ocr",
+        guard=["S1"],
+        messages=[
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "x"},
+        ],
+    )
+    systems = [m for m in last_body(route)["messages"] if m["role"] == "system"]
+    assert len(systems) == 1
+    assert "<task>ocr</task>" in systems[0]["content"]
+    assert "<guard>S1</guard>" in systems[0]["content"]
+    assert "You are helpful." in systems[0]["content"]
+
+
 def test_task_plus_nonempty_schema_raises():
     with pytest.raises(InterfazeError, match="non-empty"):
         Interfaze(api_key="t").chat.completions.create(
