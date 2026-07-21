@@ -124,9 +124,8 @@ URLs and base64 work; raw `bytes` do **not** (must be base64-encoded — this SD
 ## Good to know
 
 - Interfaze implements `chat.completions` and `models`; other OpenAI endpoints are not exposed.
-- `temperature` ≤ 1, `max_tokens` ≤ 32000, `top_p` ≤ 1 (above → 400). Bound output with
-  `max_tokens`; `max_completion_tokens` is accepted but only takes effect once server #218 is
-  deployed (until then it's a no-op — use `max_tokens`).
+- `temperature` ≤ 1, `max_tokens` ≤ 32000, `top_p` ≤ 1 (above → 400). Both `max_tokens` and
+  `max_completion_tokens` bound output (`max_tokens` wins if both are set).
 - `n`, `seed`, `stop`, penalties, `logprobs`, `tool_choice`, `top_k` are ignored by Interfaze.
 - The underlying OpenAI client is available at `interfaze.openai`.
 
