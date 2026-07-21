@@ -44,6 +44,7 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["src/interfaze"]
+omit = ["src/interfaze/langchain.py"]
 
 [tool.ruff]
 line-length = 110
