@@ -7,6 +7,7 @@ from openai import AsyncOpenAI, OpenAI
 
 from ._chat import AsyncChat, Chat
 from ._constants import (
+    DEFAULT_TIMEOUT,
     HEADER_ADMIN_KEY,
     HEADER_BYPASS_CACHE,
     HEADER_BYPASS_MOE,
@@ -64,6 +65,7 @@ class Interfaze:
         default_headers: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         self.openai = OpenAI(
             api_key=_resolve_key(api_key),
             base_url=base_url or INTERFAZE_BASE_URL,
@@ -92,6 +94,7 @@ class AsyncInterfaze:
         default_headers: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         self.openai = AsyncOpenAI(
             api_key=_resolve_key(api_key),
             base_url=base_url or INTERFAZE_BASE_URL,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 INTERFAZE_BASE_URL = "https://api.interfaze.ai/v1"
 INTERFAZE_MODEL = "interfaze-beta"
+DEFAULT_TIMEOUT = 900.0
 
 # Task names accepted in a <task>...</task> tag.
 TASK_NAMES = (

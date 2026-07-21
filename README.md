@@ -127,6 +127,8 @@ URLs and base64 work; raw `bytes` do **not** (must be base64-encoded — this SD
 - `temperature` ≤ 1, `max_tokens` ≤ 32000, `top_p` ≤ 1 (above → 400). Use `max_tokens` (not
   `max_completion_tokens`) to bound output.
 - `n`, `seed`, `stop`, penalties, `logprobs`, `tool_choice`, `top_k` are ignored by Interfaze.
+- Requests default to a 900s timeout (large OCR/document/vision jobs are slow); override with
+  `Interfaze(timeout=...)`.
 - The underlying OpenAI client is available at `interfaze.openai`.
 
 ## License
