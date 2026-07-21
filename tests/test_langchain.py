@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("langchain_openai")
 
 import respx
-from conftest import BASIC, STREAM_CHUNKS, completion, last_body, mock_json, mock_sse
+from conftest import BASIC, STREAM_CHUNKS, _chunk, completion, last_body, mock_json, mock_sse
 
 from interfaze import InterfazeError
 from interfaze._constants import INTERFAZE_BASE_URL, INTERFAZE_MODEL
@@ -132,6 +132,41 @@ def test_streaming_strips_inline_tags_and_carries_precontext():
     precontext_chunks = [c for c in chunks if c.additional_kwargs.get("precontext")]
     assert precontext_chunks
     assert precontext_chunks[0].additional_kwargs["precontext"][0]["name"] == "ocr"
+
+
+THINK_SPLIT = [
+    _chunk({"content": "<th"}),
+    _chunk({"content": "ink>Rayleigh scat"}),
+    _chunk({"content": "tering.</think>The sky "}),
+    _chunk({"content": "is blue."}),
+    _chunk({}, finish_reason="stop"),
+]
+
+
+@respx.mock
+def test_streaming_recovers_reasoning_split_across_chunks():
+    mock_sse(THINK_SPLIT)
+    model = ChatInterfaze(api_key="t")
+    chunks = list(model.stream([HumanMessage("x")]))
+    text = "".join(c.content for c in chunks)
+    assert "<think>" not in text and text == "The sky is blue."
+    reasoning = [c for c in chunks if c.additional_kwargs.get("reasoning")]
+    assert reasoning and reasoning[0].additional_kwargs["reasoning"] == "Rayleigh scattering."
+
+
+@respx.mock
+def test_async_streaming_recovers_reasoning_split_across_chunks():
+    mock_sse(THINK_SPLIT)
+    model = ChatInterfaze(api_key="t")
+
+    async def go():
+        return [c async for c in model.astream([HumanMessage("x")])]
+
+    chunks = asyncio.run(go())
+    text = "".join(c.content for c in chunks)
+    assert "<think>" not in text and text == "The sky is blue."
+    reasoning = [c for c in chunks if c.additional_kwargs.get("reasoning")]
+    assert reasoning and reasoning[0].additional_kwargs["reasoning"] == "Rayleigh scattering."
 
 
 # ---- async ----

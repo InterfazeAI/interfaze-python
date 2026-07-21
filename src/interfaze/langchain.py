@@ -7,15 +7,15 @@ Not imported from ``interfaze/__init__.py`` — the core SDK must not require
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
 from ._constants import INTERFAZE_BASE_URL, INTERFAZE_MODEL
 from ._errors import InterfazeError
-from ._stream import strip_side_channels
+from ._stream import _SideChannelFilter, strip_side_channels
 
 try:
     from langchain_core.language_models import LanguageModelInput
-    from langchain_core.messages import AIMessage
+    from langchain_core.messages import AIMessage, AIMessageChunk
     from langchain_core.outputs import ChatGenerationChunk, ChatResult
     from langchain_openai import ChatOpenAI
     from pydantic import Field, SecretStr
@@ -57,15 +57,18 @@ def _strip_tags(message: AIMessage) -> None:
 
 def _convert_video_block(block: Dict[str, Any]) -> Dict[str, Any]:
     """Interfaze has no native video content type; it accepts video as a file part."""
+    mime = block.get("mime_type")
     if "url" in block:
         file: Dict[str, Any] = {"file_data": block["url"]}
     elif "base64" in block:
-        mime = block.get("mime_type", "video/mp4")
+        mime = mime or "video/mp4"
         file = {"file_data": f"data:{mime};base64,{block['base64']}"}
     elif "file_id" in block:
         file = {"file_id": block["file_id"]}
     else:
         raise InterfazeError("Video content block requires one of 'url', 'base64', or 'file_id'.")
+    if mime:
+        file["format"] = mime
     extras = block.get("extras")
     if isinstance(extras, dict) and extras.get("filename"):
         file["filename"] = extras["filename"]
@@ -80,6 +83,30 @@ def _rewrite_video_blocks(content: Any) -> Any:
         for block in content
     ]
     return rewritten if rewritten != content else content
+
+
+def _filter_stream_chunk(gen: ChatGenerationChunk, filt: _SideChannelFilter, raw: List[str]) -> None:
+    """Rewrite a streamed chunk's content to visible-only text, accumulating the raw content."""
+    message = gen.message
+    if isinstance(message, AIMessage) and isinstance(message.content, str) and message.content:
+        raw.append(message.content)
+        message.content = filt.feed(message.content)
+
+
+def _final_side_chunk(filt: _SideChannelFilter, raw: List[str]) -> Optional[ChatGenerationChunk]:
+    """After a stream ends, emit any buffered tail plus reasoning/precontext recovered from the whole."""
+    tail = filt.flush()
+    _, reasoning, precontext = strip_side_channels("".join(raw))
+    if not tail and not reasoning and not precontext:
+        return None
+    message = AIMessageChunk(content=tail)
+    side: Dict[str, Any] = {}
+    if reasoning:
+        side["reasoning"] = reasoning
+    if precontext:
+        side["precontext"] = precontext
+    _apply_side_fields(message, side)
+    return ChatGenerationChunk(message=message)
 
 
 class ChatInterfaze(ChatOpenAI):
@@ -167,8 +194,27 @@ class ChatInterfaze(ChatOpenAI):
             side = _extract_side_fields(chunk)
             if side:
                 _apply_side_fields(message, side)
-            _strip_tags(message)
         return generation_chunk
+
+    def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+        filt = _SideChannelFilter()
+        raw: List[str] = []
+        for gen in super()._stream(*args, **kwargs):
+            _filter_stream_chunk(gen, filt, raw)
+            yield gen
+        final = _final_side_chunk(filt, raw)
+        if final is not None:
+            yield final
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        filt = _SideChannelFilter()
+        raw: List[str] = []
+        async for gen in super()._astream(*args, **kwargs):
+            _filter_stream_chunk(gen, filt, raw)
+            yield gen
+        final = _final_side_chunk(filt, raw)
+        if final is not None:
+            yield final
 
 
 __all__ = ["ChatInterfaze"]
