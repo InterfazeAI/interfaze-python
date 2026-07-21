@@ -50,3 +50,8 @@ files = ["src/interfaze"]
 [[tool.mypy.overrides]]
 module = ["langchain_openai.*", "langchain_core.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["interfaze.langchain"]
+disallow_subclassing_any = false
+warn_return_any = false
