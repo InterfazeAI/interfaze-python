@@ -217,7 +217,8 @@ class InterfazeStream:
 
     @property
     def text(self) -> str:
-        return strip_side_channels(self._state.content)[0]
+        text = strip_side_channels(self._state.content)[0]
+        return strip_json_fence(text) if self._strip_fence else text
 
     def get_final_completion(self) -> InterfazeChatCompletion:
         if not self._started:

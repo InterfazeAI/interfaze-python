@@ -126,6 +126,17 @@ def test_stream_json_object_strips_fence():
 
 
 @respx.mock
+def test_stream_text_property_strips_fence_for_json_object():
+    mock_sse(FENCED_JSON)
+    stream = Interfaze(api_key="t").chat.completions.stream(
+        messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+    )
+    stream.get_final_completion()
+    assert not stream.text.lstrip().startswith("```")
+    assert json.loads(stream.text)["city"] == "Tokyo"
+
+
+@respx.mock
 def test_stream_without_json_object_keeps_fence():
     mock_sse(FENCED_JSON)
     stream = Interfaze(api_key="t").chat.completions.stream(messages=[{"role": "user", "content": "x"}])
