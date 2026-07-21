@@ -1,0 +1,29 @@
+name: Live QA
+
+# Live e2e against the real API; gated on the INTERFAZE_API_KEY secret (never on PRs).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+
+concurrency:
+  group: live-qa
+  cancel-in-progress: true
+
+jobs:
+  live-qa:
+    name: live QA (multimodal + token usage + tasks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install
+        run: uv sync
+      - name: Run live QA
+        env:
+          INTERFAZE_API_KEY: ${{ secrets.INTERFAZE_API_KEY }}
+        run: uv run python scripts/qa_live.py

@@ -68,6 +68,14 @@ def text_generation():
     return f"vcache={r.vcache}"
 
 
+def token_usage():
+    r = client.chat.completions.create(messages=[{"role": "user", "content": "Say hi."}], max_tokens=30)
+    u = r.usage
+    _assert(u is not None, "no usage object")
+    _assert(u.prompt_tokens > 0 and u.completion_tokens > 0 and u.total_tokens > 0, "zero token counts")
+    return f"prompt={u.prompt_tokens} completion={u.completion_tokens} total={u.total_tokens}"
+
+
 def structured_output():
     r = client.chat.completions.create(
         messages=[{"role": "user", "content": "Give a greeting and the number 3."}],
@@ -187,6 +195,7 @@ def async_smoke():
 
 
 check("text generation", text_generation)
+check("token usage", token_usage)
 check("structured output", structured_output)
 check("json_object fence stripped", json_object_fence)
 check("tools -> content None", tools_content_none)

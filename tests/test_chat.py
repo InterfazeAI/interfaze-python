@@ -177,6 +177,16 @@ def test_tools_content_none():
     assert r.choices[0].message.tool_calls[0].function.name == "get_weather"
 
 
+@respx.mock
+def test_usage_tokens_surfaced():
+    mock_json(BASIC)
+    r = Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "hi"}])
+    assert r.usage is not None
+    assert r.usage.prompt_tokens == 5
+    assert r.usage.completion_tokens == 3
+    assert r.usage.total_tokens == 8
+
+
 # ---- async ----
 @respx.mock
 def test_async_mapping():
