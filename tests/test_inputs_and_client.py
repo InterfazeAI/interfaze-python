@@ -50,6 +50,17 @@ def test_audio_rejects_blacklisted_data_uri():
         inputs.audio("data:image/gif;base64,AAAA")
 
 
+def test_video_uses_file_part():
+    part = inputs.video("https://x.com/clip.mp4")
+    assert part["type"] == "file" and part["file"]["file_data"] == "https://x.com/clip.mp4"
+
+
+def test_base64_image_part():
+    url = inputs.data_url(b"\x89PNG\r\n", "image/png")
+    part = inputs.image(url)
+    assert part["type"] == "image_url" and part["image_url"]["url"].startswith("data:image/png;base64,")
+
+
 def test_gif_rejected():
     with pytest.raises(InterfazeError):
         inputs.image("https://x.com/a.gif")

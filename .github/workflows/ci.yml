@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install (all extras)
+        run: uv sync --all-extras
+      - name: Lint (ruff)
+        run: uv run ruff check src tests scripts
+      - name: Type check (mypy --strict)
+        if: matrix.python-version == '3.12'
+        run: uv run mypy
+      - name: Unit tests
+        run: uv run pytest -q
+
+  test-core-py39:
+    name: test (py3.9, core only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.9"
+          enable-cache: true
+      # langchain-openai is gated python_version>='3.10', so it's skipped on 3.9 and its tests no-op.
+      - name: Install (dev extras; langchain skipped on 3.9)
+        run: uv sync --extra dev
+      - name: Lint (ruff)
+        run: uv run ruff check src tests scripts
+      - name: Unit tests
+        run: uv run pytest -q
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan working tree for leaked tokens/secrets
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks dir . --redact --no-banner
