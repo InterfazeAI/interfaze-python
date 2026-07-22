@@ -11,14 +11,18 @@ from conftest import (
     MIXED_PRECONTEXT,
     PRECONTEXT,
     REASONING,
+    STREAM_CHUNKS,
     TASK_OCR,
     TOOL_CALL,
+    completion,
     last_body,
     last_headers,
     mock_json,
+    mock_sse,
 )
 
 from interfaze import AsyncInterfaze, Interfaze, InterfazeChatCompletion, InterfazeError
+from interfaze._chat import to_interfaze
 
 WEATHER_TOOL = [
     {
@@ -115,6 +119,43 @@ def test_control_headers():
 
 
 @respx.mock
+def test_all_control_headers_present():
+    route = mock_json(BASIC)
+    Interfaze(
+        api_key="t",
+        show_additional_info=True,
+        bypass_moe=True,
+        bypass_cache=True,
+        admin_key="admin-secret",
+    ).chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    h = last_headers(route)
+    assert h["x-show-additional-info"] == "true"
+    assert h["x-bypass-moe"] == "true"
+    assert h["x-bypass-cache"] == "true"
+    assert h["x-admin-key"] == "admin-secret"
+
+
+@respx.mock
+def test_default_headers_omit_control_flags_when_unset():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    h = last_headers(route)
+    assert "x-show-additional-info" not in h
+    assert "x-bypass-moe" not in h
+    assert "x-bypass-cache" not in h
+    assert "x-admin-key" not in h
+
+
+@respx.mock
+def test_per_request_extra_headers_override_client_default():
+    route = mock_json(BASIC)
+    Interfaze(api_key="t", admin_key="client-default").chat.completions.create(
+        messages=[{"role": "user", "content": "x"}], extra_headers={"x-admin-key": "per-request-override"}
+    )
+    assert last_headers(route)["x-admin-key"] == "per-request-override"
+
+
+@respx.mock
 def test_reasoning_effort_on_and_extra_body_forwarded():
     route = mock_json(BASIC)
     Interfaze(api_key="t").chat.completions.create(
@@ -185,6 +226,61 @@ def test_usage_tokens_surfaced():
     assert r.usage.prompt_tokens == 5
     assert r.usage.completion_tokens == 3
     assert r.usage.total_tokens == 8
+
+
+@respx.mock
+def test_json_object_requested_but_content_not_fenced_passthrough():
+    mock_json(completion('{"city": "Tokyo"}'))
+    r = Interfaze(api_key="t").chat.completions.create(
+        messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+    )
+    assert json.loads(r.choices[0].message.content)["city"] == "Tokyo"
+
+
+@respx.mock
+def test_json_object_with_tool_call_content_none_no_crash():
+    """A json_object response_format combined with a tool-call response (content=None) must
+    not crash the fence-stripping pass — it only strips string content."""
+    mock_json(TOOL_CALL)
+    r = Interfaze(api_key="t").chat.completions.create(
+        messages=[{"role": "user", "content": "weather?"}],
+        tools=WEATHER_TOOL,
+        response_format={"type": "json_object"},
+    )
+    assert r.choices[0].message.content is None
+    assert r.choices[0].message.tool_calls[0].function.name == "get_weather"
+
+
+def test_to_interfaze_tolerates_missing_choices():
+    """Defensive parsing: a malformed/edge-case completion with no choices must not crash
+    fence-stripping — the surrounding try/except in `to_interfaze` swallows the IndexError."""
+
+    class FakeRaw:
+        def model_dump(self):
+            return {
+                "id": "x",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "m",
+                "choices": [],
+                "vcache": False,
+            }
+
+    result = to_interfaze(FakeRaw(), strip_fence=True)
+    assert result.choices == []
+
+
+@respx.mock
+def test_create_stream_true_returns_raw_openai_stream():
+    """`create(stream=True)` is the low-level escape hatch — it hands back openai's own
+    Stream of raw chunks, not the InterfazeStream wrapper `.stream()` returns."""
+    mock_sse(STREAM_CHUNKS)
+    raw_stream = Interfaze(api_key="t").chat.completions.create(
+        messages=[{"role": "user", "content": "x"}], stream=True
+    )
+    chunks = list(raw_stream)
+    assert len(chunks) == len(STREAM_CHUNKS)
+    assert chunks[0].choices[0].delta.content is not None
 
 
 # ---- async ----
