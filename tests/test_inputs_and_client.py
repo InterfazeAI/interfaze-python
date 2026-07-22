@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from interfaze import Interfaze, InterfazeError, inputs
+from interfaze import AsyncInterfaze, Interfaze, InterfazeError, inputs
 
 
 # ---- inputs ----
@@ -94,3 +94,12 @@ def test_missing_key_raises(monkeypatch):
     monkeypatch.delenv("INTERFAZE_API_KEY", raising=False)
     with pytest.raises(InterfazeError, match="INTERFAZE_API_KEY"):
         Interfaze()
+
+
+def test_default_timeout_covers_server_cap():
+    assert Interfaze(api_key="t").openai.timeout == 900.0
+    assert AsyncInterfaze(api_key="t").openai.timeout == 900.0
+
+
+def test_timeout_override_respected():
+    assert Interfaze(api_key="t", timeout=30.0).openai.timeout == 30.0
