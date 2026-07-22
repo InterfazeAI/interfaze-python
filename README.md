@@ -124,8 +124,8 @@ URLs and base64 work; raw `bytes` do **not** (must be base64-encoded — this SD
 ## Good to know
 
 - Interfaze implements `chat.completions` and `models`; other OpenAI endpoints are not exposed.
-- `temperature` ≤ 1, `max_tokens` ≤ 32000, `top_p` ≤ 1 (above → 400). Use `max_tokens` (not
-  `max_completion_tokens`) to bound output.
+- `temperature` ≤ 1, `max_tokens` ≤ 32000, `top_p` ≤ 1 (above → 400). Both `max_tokens` and
+  `max_completion_tokens` bound output (`max_tokens` wins if both are set).
 - `n`, `seed`, `stop`, penalties, `logprobs`, `tool_choice`, `top_k` are ignored by Interfaze.
 - Requests default to a 900s timeout (large OCR/document/vision jobs are slow); override with
   `Interfaze(timeout=...)`.

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, Iterable, List, Literal, Optional, Union, cast, overload
 
 from openai import AsyncOpenAI, AsyncStream, OpenAI, Stream
@@ -10,18 +9,8 @@ from ._constants import INTERFAZE_MODEL
 from ._errors import InterfazeError
 from ._guard import guard_tag
 from ._schema import empty_task_schema
-from ._stream import AsyncInterfazeStream, InterfazeStream
+from ._stream import AsyncInterfazeStream, InterfazeStream, strip_json_fence
 from ._types import GuardCode, InterfazeChatCompletion, TaskName
-
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
-
-
-def strip_json_fence(content: str) -> str:
-    """Interfaze wraps ``json_object`` content in a ```json fence; unwrap it."""
-    t = content.strip()
-    if not t.startswith("```"):
-        return content
-    return _FENCE.sub("", t).strip()
 
 
 def _is_non_empty_schema(rf: Any) -> bool:
@@ -154,8 +143,8 @@ class Completions(_CompletionsBase):
         response_format: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> InterfazeStream:
-        kw, _ = self._kwargs(messages, model, task, guard, response_format, kwargs)
-        return InterfazeStream(self._client, kw)
+        kw, strip = self._kwargs(messages, model, task, guard, response_format, kwargs)
+        return InterfazeStream(self._client, kw, strip)
 
 
 class AsyncCompletions(_CompletionsBase):
@@ -219,8 +208,8 @@ class AsyncCompletions(_CompletionsBase):
         response_format: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> AsyncInterfazeStream:
-        kw, _ = self._kwargs(messages, model, task, guard, response_format, kwargs)
-        return AsyncInterfazeStream(self._client, kw)
+        kw, strip = self._kwargs(messages, model, task, guard, response_format, kwargs)
+        return AsyncInterfazeStream(self._client, kw, strip)
 
 
 class Chat:

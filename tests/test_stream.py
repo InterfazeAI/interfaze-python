@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import respx
 from conftest import STREAM_CHUNKS, STREAM_THINK, _chunk, mock_sse
 
 from interfaze import AsyncInterfaze, Interfaze
+
+FENCED_JSON = [
+    _chunk({"content": "```json\n"}),
+    _chunk({"content": '{"city": "Tokyo"}'}),
+    _chunk({"content": "\n```"}),
+    _chunk({}, finish_reason="stop"),
+]
 
 
 @respx.mock
@@ -104,3 +112,47 @@ def test_async_text_deltas():
         return "".join([t async for t in stream.text_deltas()])
 
     assert asyncio.run(go()) == "Total is $12.34"
+
+
+@respx.mock
+def test_stream_json_object_strips_fence():
+    mock_sse(FENCED_JSON)
+    stream = Interfaze(api_key="t").chat.completions.stream(
+        messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+    )
+    content = stream.get_final_completion().choices[0].message.content or ""
+    assert not content.lstrip().startswith("```")
+    assert json.loads(content)["city"] == "Tokyo"
+
+
+@respx.mock
+def test_stream_text_property_strips_fence_for_json_object():
+    mock_sse(FENCED_JSON)
+    stream = Interfaze(api_key="t").chat.completions.stream(
+        messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+    )
+    stream.get_final_completion()
+    assert not stream.text.lstrip().startswith("```")
+    assert json.loads(stream.text)["city"] == "Tokyo"
+
+
+@respx.mock
+def test_stream_without_json_object_keeps_fence():
+    mock_sse(FENCED_JSON)
+    stream = Interfaze(api_key="t").chat.completions.stream(messages=[{"role": "user", "content": "x"}])
+    content = stream.get_final_completion().choices[0].message.content or ""
+    assert content.lstrip().startswith("```")
+
+
+@respx.mock
+def test_async_stream_json_object_strips_fence():
+    mock_sse(FENCED_JSON)
+
+    async def go():
+        stream = AsyncInterfaze(api_key="t").chat.completions.stream(
+            messages=[{"role": "user", "content": "x"}], response_format={"type": "json_object"}
+        )
+        return await stream.get_final_completion()
+
+    content = asyncio.run(go()).choices[0].message.content or ""
+    assert not content.lstrip().startswith("```")

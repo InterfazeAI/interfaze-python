@@ -30,6 +30,17 @@ def strip_side_channels(content: str) -> Tuple[str, Optional[str], Optional[List
     return text.strip(), ("\n".join(thinks) if thinks else None), (pre or None)
 
 
+_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def strip_json_fence(content: str) -> str:
+    """Interfaze wraps ``json_object`` content in a ```json fence; unwrap it."""
+    t = content.strip()
+    if not t.startswith("```"):
+        return content
+    return _FENCE.sub("", t).strip()
+
+
 _SIDE_OPEN = ("<think>", "<precontext>")
 _SIDE_CLOSE = {"<think>": "</think>", "<precontext>": "</precontext>"}
 
@@ -127,8 +138,10 @@ class _State:
             if tc.function and tc.function.arguments:
                 acc["arguments"] += tc.function.arguments
 
-    def build(self) -> InterfazeChatCompletion:
+    def build(self, strip_fence: bool = False) -> InterfazeChatCompletion:
         text, reasoning, precontext = strip_side_channels(self.content)
+        if strip_fence:
+            text = strip_json_fence(text)
         tool_calls = [
             {"id": t["id"], "type": "function", "function": {"name": t["name"], "arguments": t["arguments"]}}
             for t in self.tool_calls.values()
@@ -156,9 +169,10 @@ class _State:
 class InterfazeStream:
     """Sync streaming helper — iterate chunks, then ``get_final_completion()``."""
 
-    def __init__(self, client: OpenAI, kwargs: Dict[str, Any]) -> None:
+    def __init__(self, client: OpenAI, kwargs: Dict[str, Any], strip_fence: bool = False) -> None:
         self._client = client
         self._kwargs = kwargs
+        self._strip_fence = strip_fence
         self._state = _State()
         self._started = False
         self._done = False
@@ -203,7 +217,8 @@ class InterfazeStream:
 
     @property
     def text(self) -> str:
-        return strip_side_channels(self._state.content)[0]
+        text = strip_side_channels(self._state.content)[0]
+        return strip_json_fence(text) if self._strip_fence else text
 
     def get_final_completion(self) -> InterfazeChatCompletion:
         if not self._started:
@@ -215,15 +230,16 @@ class InterfazeStream:
             raise InterfazeError(
                 "Call get_final_completion() after fully iterating, or instead of iterating."
             )
-        return self._state.build()
+        return self._state.build(self._strip_fence)
 
 
 class AsyncInterfazeStream:
     """Async streaming helper — ``async for`` chunks, then ``await get_final_completion()``."""
 
-    def __init__(self, client: AsyncOpenAI, kwargs: Dict[str, Any]) -> None:
+    def __init__(self, client: AsyncOpenAI, kwargs: Dict[str, Any], strip_fence: bool = False) -> None:
         self._client = client
         self._kwargs = kwargs
+        self._strip_fence = strip_fence
         self._state = _State()
         self._started = False
         self._done = False
@@ -279,4 +295,4 @@ class AsyncInterfazeStream:
             raise InterfazeError(
                 "Call get_final_completion() after fully iterating, or instead of iterating."
             )
-        return self._state.build()
+        return self._state.build(self._strip_fence)
