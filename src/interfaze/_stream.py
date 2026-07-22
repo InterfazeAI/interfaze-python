@@ -5,6 +5,7 @@ import re
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple
 
 from openai import AsyncOpenAI, OpenAI
+from openai.lib.streaming.chat import ChatCompletionStreamEvent, ChatCompletionStreamState
 from openai.types.chat import ChatCompletionChunk
 
 from ._errors import InterfazeError
@@ -53,10 +54,7 @@ def _suffix_prefix_len(s: str, tag: str) -> int:
 
 
 class _SideChannelFilter:
-    """Strip inline ``<think>``/``<precontext>`` blocks from streamed content, chunk by chunk.
-
-    Buffers a trailing partial that may be a split tag; never withholds text that cannot be a tag.
-    """
+    """Incrementally strips ``<think>``/``<precontext>`` blocks, buffering tags split across chunks."""
 
     def __init__(self) -> None:
         self._buf = ""
@@ -102,6 +100,26 @@ class _SideChannelFilter:
         return rest
 
 
+def _clean_for_events(
+    chunk: ChatCompletionChunk, filt: _SideChannelFilter, role_injected: bool
+) -> "Tuple[ChatCompletionChunk, bool]":
+    """Clean a chunk for openai's event state: strip side channels from content, inject a role."""
+    cleaned = chunk.model_copy(deep=True)
+    if not cleaned.choices:
+        return cleaned, role_injected
+    delta = cleaned.choices[0].delta
+    if not role_injected:
+        role_injected = True
+        if not delta.role:
+            delta.role = "assistant"
+    piece = filt.feed(delta.content) if isinstance(delta.content, str) else ""
+    if cleaned.choices[0].finish_reason:
+        piece += filt.flush()
+    if isinstance(delta.content, str) or piece:
+        delta.content = piece
+    return cleaned, role_injected
+
+
 class _State:
     def __init__(self) -> None:
         self.content = ""
@@ -111,6 +129,8 @@ class _State:
         self.model = ""
         self.created = 0
         self.tool_calls: Dict[int, Dict[str, str]] = {}
+        self.usage: Any = None
+        self.system_fingerprint: Optional[str] = None
 
     def accumulate(self, chunk: ChatCompletionChunk) -> None:
         if not self.id and chunk.id:
@@ -119,6 +139,10 @@ class _State:
             self.model = chunk.model
         if not self.created and chunk.created:
             self.created = chunk.created
+        if chunk.usage:
+            self.usage = chunk.usage
+        if chunk.system_fingerprint:
+            self.system_fingerprint = chunk.system_fingerprint
         if not chunk.choices:
             return
         choice = chunk.choices[0]
@@ -159,6 +183,10 @@ class _State:
             ],
             "vcache": False,
         }
+        if self.usage is not None:
+            data["usage"] = self.usage.model_dump()
+        if self.system_fingerprint:
+            data["system_fingerprint"] = self.system_fingerprint
         if reasoning:
             data["reasoning"] = reasoning
         if precontext:
@@ -167,13 +195,16 @@ class _State:
 
 
 class InterfazeStream:
-    """Sync streaming helper — iterate chunks, then ``get_final_completion()``."""
+    """Sync streaming helper — iterate OpenAI-style events, then ``get_final_completion()``."""
 
     def __init__(self, client: OpenAI, kwargs: Dict[str, Any], strip_fence: bool = False) -> None:
         self._client = client
         self._kwargs = kwargs
         self._strip_fence = strip_fence
         self._state = _State()
+        self._openai_state: ChatCompletionStreamState[None] = ChatCompletionStreamState()
+        self._filter = _SideChannelFilter()
+        self._role_injected = False
         self._started = False
         self._done = False
 
@@ -183,36 +214,31 @@ class InterfazeStream:
     def __exit__(self, *exc: Any) -> None:
         return None
 
-    def __iter__(self) -> "Iterator[ChatCompletionChunk]":
+    def __iter__(self) -> "Iterator[ChatCompletionStreamEvent[None]]":
         if self._started:
             raise InterfazeError("This stream has already been consumed.")
         self._started = True
         for chunk in self._client.chat.completions.create(stream=True, **self._kwargs):
             self._state.accumulate(chunk)
-            yield chunk
+            cleaned, self._role_injected = _clean_for_events(chunk, self._filter, self._role_injected)
+            yield from self._openai_state.handle_chunk(cleaned)
         self._done = True
 
     def text_deltas(self) -> "Iterator[str]":
-        """Yield visible text only, stripping ``<think>``/``<precontext>`` across chunk boundaries.
-
-        Use this (not raw ``create(stream=True)`` deltas) for live rendering. ``reasoning`` and
-        ``precontext`` remain available on ``get_final_completion()``.
-        """
+        """Iterate only the visible text (no side channels, no events) — for plain-token consumers."""
         if self._started:
             raise InterfazeError("This stream has already been consumed.")
         self._started = True
-        filt = _SideChannelFilter()
         for chunk in self._client.chat.completions.create(stream=True, **self._kwargs):
             self._state.accumulate(chunk)
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta and isinstance(delta.content, str) and delta.content:
-                    visible = filt.feed(delta.content)
-                    if visible:
-                        yield visible
-        tail = filt.flush()
-        if tail:
-            yield tail
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            piece = self._filter.feed(delta.content) if isinstance(delta.content, str) else ""
+            if chunk.choices[0].finish_reason:
+                piece += self._filter.flush()
+            if piece:
+                yield piece
         self._done = True
 
     @property
@@ -234,13 +260,16 @@ class InterfazeStream:
 
 
 class AsyncInterfazeStream:
-    """Async streaming helper — ``async for`` chunks, then ``await get_final_completion()``."""
+    """Async streaming helper — ``async for`` OpenAI-style events, then ``await get_final_completion()``."""
 
     def __init__(self, client: AsyncOpenAI, kwargs: Dict[str, Any], strip_fence: bool = False) -> None:
         self._client = client
         self._kwargs = kwargs
         self._strip_fence = strip_fence
         self._state = _State()
+        self._openai_state: ChatCompletionStreamState[None] = ChatCompletionStreamState()
+        self._filter = _SideChannelFilter()
+        self._role_injected = False
         self._started = False
         self._done = False
 
@@ -250,38 +279,34 @@ class AsyncInterfazeStream:
     async def __aexit__(self, *exc: Any) -> None:
         return None
 
-    async def __aiter__(self) -> "AsyncIterator[ChatCompletionChunk]":
+    async def __aiter__(self) -> "AsyncIterator[ChatCompletionStreamEvent[None]]":
         if self._started:
             raise InterfazeError("This stream has already been consumed.")
         self._started = True
         stream = await self._client.chat.completions.create(stream=True, **self._kwargs)
         async for chunk in stream:
             self._state.accumulate(chunk)
-            yield chunk
+            cleaned, self._role_injected = _clean_for_events(chunk, self._filter, self._role_injected)
+            for event in self._openai_state.handle_chunk(cleaned):
+                yield event
         self._done = True
 
     async def text_deltas(self) -> "AsyncIterator[str]":
-        """Yield visible text only, stripping ``<think>``/``<precontext>`` across chunk boundaries.
-
-        Use this (not raw ``create(stream=True)`` deltas) for live rendering. ``reasoning`` and
-        ``precontext`` remain available on ``get_final_completion()``.
-        """
+        """Iterate only the visible text (no side channels, no events) — for plain-token consumers."""
         if self._started:
             raise InterfazeError("This stream has already been consumed.")
         self._started = True
-        filt = _SideChannelFilter()
         stream = await self._client.chat.completions.create(stream=True, **self._kwargs)
         async for chunk in stream:
             self._state.accumulate(chunk)
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta and isinstance(delta.content, str) and delta.content:
-                    visible = filt.feed(delta.content)
-                    if visible:
-                        yield visible
-        tail = filt.flush()
-        if tail:
-            yield tail
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            piece = self._filter.feed(delta.content) if isinstance(delta.content, str) else ""
+            if chunk.choices[0].finish_reason:
+                piece += self._filter.flush()
+            if piece:
+                yield piece
         self._done = True
 
     async def get_final_completion(self) -> InterfazeChatCompletion:
