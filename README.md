@@ -1,4 +1,4 @@
-# interfaze
+# interfaze-python
 
 The official [Interfaze](https://interfaze.ai) SDK for Python.
 
