@@ -145,8 +145,8 @@ def test_tool_call_stream_events_and_final():
     assert final.choices[0].finish_reason == "tool_calls"
     assert final.choices[0].message.content is None
     tool_calls = final.choices[0].message.tool_calls
-    assert tool_calls and tool_calls[0].function.name == "get_weather"
-    assert tool_calls[0].function.arguments == '{"city":"Paris"}'
+    assert tool_calls and tool_calls[0].function.name == "get_weather"  # ty:ignore[unresolved-attribute]
+    assert tool_calls[0].function.arguments == '{"city":"Paris"}'  # ty:ignore[unresolved-attribute]
 
 
 @respx.mock

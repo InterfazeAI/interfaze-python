@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("langchain_openai")
 
 import respx
+from assets import ASSETS
 from conftest import BASIC, STREAM_CHUNKS, _chunk, completion, last_body, mock_json, mock_sse
 
 from interfaze import InterfazeError
@@ -99,13 +100,13 @@ def test_video_block_converted_to_file_part():
     message = HumanMessage(
         content=[
             {"type": "text", "text": "what happens in this clip?"},
-            {"type": "video", "url": "https://example.com/clip.mp4"},
+            {"type": "video", "url": ASSETS["video"]},
         ]
     )
     model.invoke([message])  # must not raise
     body = last_body(route)
     content = body["messages"][-1]["content"]
-    assert {"type": "file", "file": {"file_data": "https://example.com/clip.mp4"}} in content
+    assert {"type": "file", "file": {"file_data": ASSETS["video"]}} in content
 
 
 @respx.mock
@@ -126,7 +127,7 @@ def test_streaming_strips_inline_tags_and_carries_precontext():
     mock_sse(STREAM_CHUNKS)
     model = ChatInterfaze(api_key="t")
     chunks = list(model.stream([HumanMessage("x")]))
-    text = "".join(c.content for c in chunks)
+    text = "".join(c.content for c in chunks)  # ty:ignore[no-matching-overload]
     assert "<precontext>" not in text
     assert text == "Total is $12.34"
     precontext_chunks = [c for c in chunks if c.additional_kwargs.get("precontext")]
@@ -148,7 +149,7 @@ def test_streaming_recovers_reasoning_split_across_chunks():
     mock_sse(THINK_SPLIT)
     model = ChatInterfaze(api_key="t")
     chunks = list(model.stream([HumanMessage("x")]))
-    text = "".join(c.content for c in chunks)
+    text = "".join(c.content for c in chunks)  # ty:ignore[no-matching-overload]
     assert "<think>" not in text and text == "The sky is blue."
     reasoning = [c for c in chunks if c.additional_kwargs.get("reasoning")]
     assert reasoning and reasoning[0].additional_kwargs["reasoning"] == "Rayleigh scattering."

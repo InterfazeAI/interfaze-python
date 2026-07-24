@@ -26,16 +26,16 @@ def test_file_part():
 
 
 def test_file_forwards_computed_mime():
-    assert inputs.file("https://x.com/d.pdf")["file"]["format"] == "application/pdf"
+    assert inputs.file(ASSETS["pdf"], filename="attention.pdf")["file"]["format"] == "application/pdf"
 
 
 def test_video_forwards_mp4_mime():
-    part = inputs.video("https://x.com/clip.mp4")
+    part = inputs.video(ASSETS["video"])
     assert part["type"] == "file" and part["file"]["format"] == "video/mp4"
 
 
-def test_file_unknown_ext_omits_format():
-    assert "format" not in inputs.file("https://x.com/page")["file"]
+def test_file_extensionless_omits_format():
+    assert "format" not in inputs.file(ASSETS["pdf"])["file"]
 
 
 def test_audio_uses_input_audio():
@@ -54,8 +54,8 @@ def test_audio_rejects_blacklisted_data_uri():
 
 
 def test_video_uses_file_part():
-    part = inputs.video("https://x.com/clip.mp4")
-    assert part["type"] == "file" and part["file"]["file_data"] == "https://x.com/clip.mp4"
+    part = inputs.video(ASSETS["video"])
+    assert part["type"] == "file" and part["file"]["file_data"] == ASSETS["video"]
 
 
 def test_base64_image_part():
@@ -78,7 +78,7 @@ def test_video_part_rides_on_file():
 
 def test_gif_rejected():
     with pytest.raises(InterfazeError):
-        inputs.image("https://jigsawstack.com/preview/example.gif")
+        inputs.image(ASSETS["gif"])
 
 
 def test_avif_rejected_via_format():
@@ -118,7 +118,7 @@ def test_auto_part_extensionless_url_falls_through_to_file():
 
 
 def test_unknown_extension_file_part_has_no_format_key():
-    part = inputs.file("https://example.com/dataset.xyz123")
+    part = inputs.file(ASSETS["svg"])
     assert "format" not in part["file"]
     assert "filename" not in part["file"]
 

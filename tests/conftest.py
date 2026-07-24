@@ -83,7 +83,7 @@ TASK_GUI_DETECTION = completion(
 )
 TASK_TRANSCRIBE = completion('{"name": "speech_to_text", "result": {"text": "hello world"}}')
 TASK_WEB_SEARCH = completion(
-    '{"name": "web_search", "result": {"results": [{"title": "AI agents", "url": "https://example.com"}]}}'
+    '{"name": "web_search", "result": {"results": [{"title": "AI agents", "url": "https://news.ycombinator.com"}]}}'
 )
 TASK_SCRAPE = completion('{"name": "scraper", "result": {"text": "Hacker News"}}')
 TASK_TRANSLATE = completion('{"name": "translate", "result": "Bonjour"}')

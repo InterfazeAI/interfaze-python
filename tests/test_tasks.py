@@ -117,7 +117,7 @@ def test_web_search(is_async):
     system_msg, user_msg = body["messages"]
     assert "<task>web_search</task>" in system_msg["content"]
     assert user_msg["content"] == "latest AI agent news"
-    assert result == {"results": [{"title": "AI agents", "url": "https://example.com"}]}
+    assert result == {"results": [{"title": "AI agents", "url": "https://news.ycombinator.com"}]}
 
 
 @IS_ASYNC
