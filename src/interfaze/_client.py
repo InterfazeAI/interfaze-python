@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from openai import AsyncOpenAI, OpenAI
 
@@ -46,6 +46,14 @@ def _build_headers(
     return headers
 
 
+# OpenAI() fills `organization` / `project` from OPENAI_ORG_ID / OPENAI_PROJECT_ID and sends them
+# as OpenAI-Organization / OpenAI-Project headers. Those are OpenAI account ids, so keep them off
+# Interfaze requests unless they were passed in explicitly.
+def _drop_openai_env_ids(client: Union[OpenAI, AsyncOpenAI], kwargs: Dict[str, Any]) -> None:
+    client.organization = kwargs.get("organization")
+    client.project = kwargs.get("project")
+
+
 class Interfaze:
     def __init__(
         self,
@@ -68,6 +76,7 @@ class Interfaze:
             ),
             **kwargs,
         )
+        _drop_openai_env_ids(self.openai, kwargs)
         self.chat = Chat(self.openai)
         self.models = self.openai.models
         self.tasks = Tasks(self.chat.completions)
@@ -95,6 +104,7 @@ class AsyncInterfaze:
             ),
             **kwargs,
         )
+        _drop_openai_env_ids(self.openai, kwargs)
         self.chat = AsyncChat(self.openai)
         self.models = self.openai.models
         self.tasks = AsyncTasks(self.chat.completions)

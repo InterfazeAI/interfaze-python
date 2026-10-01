@@ -147,6 +147,33 @@ def test_default_headers_omit_control_flags_when_unset():
 
 
 @respx.mock
+def test_openai_org_and_project_env_not_sent(monkeypatch):
+    monkeypatch.setenv("OPENAI_ORG_ID", "org-from-env")
+    monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_from_env")
+    route = mock_json(BASIC)
+    Interfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    h = last_headers(route)
+    assert "openai-organization" not in h and "openai-project" not in h
+
+    asyncio.run(
+        AsyncInterfaze(api_key="t").chat.completions.create(messages=[{"role": "user", "content": "x"}])
+    )
+    h = last_headers(route)
+    assert "openai-organization" not in h and "openai-project" not in h
+
+
+@respx.mock
+def test_explicit_openai_org_and_project_still_sent(monkeypatch):
+    monkeypatch.setenv("OPENAI_ORG_ID", "org-from-env")
+    route = mock_json(BASIC)
+    Interfaze(api_key="t", organization="org-explicit", project="proj_explicit").chat.completions.create(
+        messages=[{"role": "user", "content": "x"}]
+    )
+    h = last_headers(route)
+    assert h["openai-organization"] == "org-explicit" and h["openai-project"] == "proj_explicit"
+
+
+@respx.mock
 def test_per_request_extra_headers_override_client_default():
     route = mock_json(BASIC)
     Interfaze(api_key="t", admin_key="client-default").chat.completions.create(
