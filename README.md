@@ -140,7 +140,7 @@ res = interfaze.chat.completions.create(
 receipt = json.loads(res.choices[0].message.content or "{}")  # {"merchant": ..., "total": ..., "items": [...]}
 ```
 
-`message.content` comes back as a JSON string, so parse it - and keep the root an `object`, since a non-object root is wrapped under a `result` key. Prefer Pydantic? Use `interfaze.chat.completions.parse(response_format=YourModel, …)` and read `choices[0].message.parsed`.
+`message.content` comes back as a JSON string, so parse it - and keep the root an `object`, since a non-object root is wrapped under a `result` key. Prefer Pydantic? Use `interfaze.chat.completions.parse(response_format=YourModel, …)` and read `choices[0].message.parsed`. The result is an `InterfazeParsedChatCompletion`, so `precontext` (a list of `Precontext`, e.g. `res.precontext[0].result`) and `vcache` are typed just like on `create()`.
 
 ### Tools and function calling
 
