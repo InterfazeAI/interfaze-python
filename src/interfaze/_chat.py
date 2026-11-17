@@ -10,7 +10,7 @@ from ._errors import InterfazeError
 from ._guard import guard_tag
 from ._schema import empty_task_schema
 from ._stream import AsyncInterfazeStream, InterfazeStream, strip_json_fence
-from ._types import GuardCode, InterfazeChatCompletion, TaskName
+from ._types import GuardCode, InterfazeChatCompletion, InterfazeParsedChatCompletion, TaskName
 
 
 def _is_non_empty_schema(rf: Any) -> bool:
@@ -64,6 +64,18 @@ def to_interfaze(raw: ChatCompletion, strip_fence: bool) -> InterfazeChatComplet
         except (KeyError, IndexError, TypeError):
             pass
     result = InterfazeChatCompletion.model_validate(data)
+    request_id = getattr(raw, "_request_id", None)
+    if request_id is not None:
+        result._request_id = request_id
+    return result
+
+
+def to_interfaze_parsed(raw: ParsedChatCompletion[Any]) -> InterfazeParsedChatCompletion[Any]:
+    # Not model_dump(): that would flatten `message.parsed` back into a dict. Keep the parsed
+    # field values as-is and promote the untyped extras (`precontext`, `vcache`, ...) to typed fields.
+    data: Dict[str, Any] = {name: getattr(raw, name) for name in type(raw).model_fields}
+    data.update(raw.model_extra or {})
+    result = InterfazeParsedChatCompletion[Any].model_validate(data)
     request_id = getattr(raw, "_request_id", None)
     if request_id is not None:
         result._request_id = request_id
@@ -150,7 +162,7 @@ class Completions(_CompletionsBase):
         kw, strip = self._kwargs(messages, model, task, guard, response_format, kwargs)
         return InterfazeStream(self._client, kw, strip)
 
-    # Structured output via a Pydantic model, extras (``vcache``/``precontext``) are present but untyped here; use ``create`` for the typed extended completion. (same for async)
+    # Structured output via a Pydantic model; returns the Interfaze-extended parsed completion with typed ``precontext``/``vcache`` (same for async).
     def parse(
         self,
         *,
@@ -159,11 +171,12 @@ class Completions(_CompletionsBase):
         model: str = INTERFAZE_MODEL,
         guard: Optional[List[GuardCode]] = None,
         **kwargs: Any,
-    ) -> "ParsedChatCompletion[Any]":
+    ) -> "InterfazeParsedChatCompletion[Any]":
         msgs = prepare(messages, model, None, guard, None)[0]
-        return self._client.chat.completions.parse(
+        raw = self._client.chat.completions.parse(
             model=model, messages=msgs, response_format=response_format, **kwargs
         )
+        return to_interfaze_parsed(raw)
 
     @property
     def with_raw_response(self) -> Any:
@@ -244,11 +257,12 @@ class AsyncCompletions(_CompletionsBase):
         model: str = INTERFAZE_MODEL,
         guard: Optional[List[GuardCode]] = None,
         **kwargs: Any,
-    ) -> "ParsedChatCompletion[Any]":
+    ) -> "InterfazeParsedChatCompletion[Any]":
         msgs = prepare(messages, model, None, guard, None)[0]
-        return await self._client.chat.completions.parse(
+        raw = await self._client.chat.completions.parse(
             model=model, messages=msgs, response_format=response_format, **kwargs
         )
+        return to_interfaze_parsed(raw)
 
     @property
     def with_raw_response(self) -> Any:

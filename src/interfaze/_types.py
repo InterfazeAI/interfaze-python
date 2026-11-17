@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, List, Literal, Optional
+from typing import Any, Generic, List, Literal, Optional, TypeVar
 
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion, ParsedChatCompletion
 from pydantic import BaseModel, ConfigDict
 
 TaskName = Literal[
@@ -47,6 +47,18 @@ class Precontext(BaseModel):
 
 
 class InterfazeChatCompletion(ChatCompletion):
+    precontext: Optional[List[Precontext]] = None
+    reasoning: Optional[str] = None
+    vcache: bool = False
+    debug: Optional[Any] = None
+
+
+ContentType = TypeVar("ContentType")
+
+
+class InterfazeParsedChatCompletion(ParsedChatCompletion[ContentType], Generic[ContentType]):
+    """Result of `chat.completions.parse()`: OpenAI's parsed completion plus the Interfaze extras."""
+
     precontext: Optional[List[Precontext]] = None
     reasoning: Optional[str] = None
     vcache: bool = False

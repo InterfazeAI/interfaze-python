@@ -32,6 +32,7 @@ from ._stream import (
 from ._types import (
     GuardCode,
     InterfazeChatCompletion,
+    InterfazeParsedChatCompletion,
     Precontext,
     ReasoningEffort,
     TaskName,
@@ -44,6 +45,7 @@ __all__ = [
     "AsyncInterfaze",
     "InterfazeError",
     "InterfazeChatCompletion",
+    "InterfazeParsedChatCompletion",
     "InterfazeStream",
     "AsyncInterfazeStream",
     "strip_side_channels",
