@@ -17,9 +17,10 @@ from ._constants import (
 from ._tasks import AsyncTasks, Tasks
 
 
-# Returns the explicit key, else INTERFAZE_API_KEY, else None for a keyless client.
+# Returns the explicit key, else INTERFAZE_API_KEY, else None for a keyless client. Trims each key,
+# because an HTTP header value cannot end with a space or a newline.
 def _resolve_key(api_key: Optional[str]) -> Optional[str]:
-    return api_key or os.environ.get("INTERFAZE_API_KEY") or None
+    return (api_key or "").strip() or os.environ.get("INTERFAZE_API_KEY", "").strip() or None
 
 
 # A keyless client gives OpenAI() a key provider that returns "". The provider stops OpenAI()

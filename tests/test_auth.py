@@ -129,6 +129,23 @@ def test_no_key_survives_openai_with_options(api, monkeypatch, client_cls):
     assert _authorizations(api) == [None]
 
 
+# Each case: explicit api_key, INTERFAZE_API_KEY, the Authorization header the request carries.
+PADDED_KEYS = {
+    "padded-explicit-key": (f" {EXPLICIT_KEY}\n", "", f"Bearer {EXPLICIT_KEY}"),
+    "padded-env-key": (None, f" {ENV_KEY}\n", f"Bearer {ENV_KEY}"),
+    "blank-explicit-key-uses-env-key": ("   ", ENV_KEY, f"Bearer {ENV_KEY}"),
+    "blank-env-key-is-keyless": (None, " \n", None),
+}
+
+
+@pytest.mark.parametrize("api_key,env_key,authorization", PADDED_KEYS.values(), ids=PADDED_KEYS.keys())
+@clients
+def test_key_is_trimmed(api, monkeypatch, client_cls, api_key, env_key, authorization):
+    monkeypatch.setenv("INTERFAZE_API_KEY", env_key)
+    _call(client_cls(api_key=api_key), _chat)
+    assert _authorizations(api) == [authorization]
+
+
 @clients
 @respx.mock
 def test_rejected_key_raises_without_keyless_retry(client_cls):
