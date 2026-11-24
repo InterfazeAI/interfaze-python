@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 
 from openai import AsyncOpenAI, OpenAI
 
@@ -14,17 +14,35 @@ from ._constants import (
     HEADER_SHOW_ADDITIONAL_INFO,
     INTERFAZE_BASE_URL,
 )
-from ._errors import InterfazeError
 from ._tasks import AsyncTasks, Tasks
 
 
-def _resolve_key(api_key: Optional[str]) -> str:
-    key = api_key or os.environ.get("INTERFAZE_API_KEY")
-    if not key:
-        raise InterfazeError(
-            "Missing API key. Pass Interfaze(api_key=...) or set the INTERFAZE_API_KEY environment variable."
-        )
-    return key
+# Returns the explicit key, else INTERFAZE_API_KEY, else None for a keyless client.
+def _resolve_key(api_key: Optional[str]) -> Optional[str]:
+    return api_key or os.environ.get("INTERFAZE_API_KEY") or None
+
+
+# A keyless client gives OpenAI() a key provider that returns "". The provider stops OpenAI()
+# from reading OPENAI_API_KEY and passes its credential check (openai 2.34 and later). OpenAI
+# sends no Authorization header for an empty key, and with_options() and copy() keep the provider.
+def _no_key() -> str:
+    return ""
+
+
+async def _async_no_key() -> str:
+    return ""
+
+
+# openai 2.34 and later raise before they send a request with no Authorization header.
+# Interfaze accepts server-side requests with no key, so these clients skip that check.
+class _OpenAI(OpenAI):
+    def _validate_headers(self, headers: Mapping[str, object], custom_headers: Mapping[str, object]) -> None:
+        return None
+
+
+class _AsyncOpenAI(AsyncOpenAI):
+    def _validate_headers(self, headers: Mapping[str, object], custom_headers: Mapping[str, object]) -> None:
+        return None
 
 
 def _build_headers(
@@ -71,8 +89,8 @@ class Interfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-        self.openai = OpenAI(
-            api_key=_resolve_key(api_key),
+        self.openai: OpenAI = _OpenAI(
+            api_key=_resolve_key(api_key) or _no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
                 default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key
@@ -99,8 +117,8 @@ class AsyncInterfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-        self.openai = AsyncOpenAI(
-            api_key=_resolve_key(api_key),
+        self.openai: AsyncOpenAI = _AsyncOpenAI(
+            api_key=_resolve_key(api_key) or _async_no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
                 default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key

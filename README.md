@@ -21,6 +21,8 @@ interfaze = Interfaze(api_key="sk_...")  # or set INTERFAZE_API_KEY and call Int
 
 Async is identical via `AsyncInterfaze` - every call becomes `await`-able.
 
+You can also call Interfaze without a key from server-side code. If you pass no `api_key` and `INTERFAZE_API_KEY` is not set, the client sends requests without an `Authorization` header. Interfaze limits keyless requests from each IP address. See [Try Interfaze without an API key](https://interfaze.ai/docs#try-interfaze-without-an-api-key) and the [keyless limits](https://interfaze.ai/docs/limits#keyless-access). Keyless access requires an `interfaze` release later than 1.0.4.
+
 ## Your first request
 
 This guide will get you started with your first request to Interfaze, which follows the Chat Completions API standard.
@@ -317,7 +319,7 @@ Interfaze re-exports typed error classes to catch and narrow on:
 from interfaze import BadRequestError, InterfazeError, RateLimitError
 ```
 
-`InterfazeError` is client-side (missing key, invalid guard code, stream misuse). Everything else is an `APIError` subclass carrying `status_code` and `code` - `BadRequestError` (400), `AuthenticationError` (401), `RateLimitError` (429), and so on.
+`InterfazeError` is client-side (invalid guard code, stream misuse). Everything else is an `APIError` subclass carrying `status_code` and `code` - `BadRequestError` (400), `AuthenticationError` (401), `RateLimitError` (429), and so on. When a keyless request reaches a limit, the `RateLimitError` message tells you how to get an API key.
 
 ## Capabilities
 
