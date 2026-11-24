@@ -4,6 +4,12 @@ INTERFAZE_BASE_URL = "https://api.interfaze.ai/v1"
 INTERFAZE_MODEL = "interfaze-beta"
 DEFAULT_TIMEOUT = 900.0
 
+# The API error code of the keyless daily limit, and the longest Retry-After wait openai honors.
+KEYLESS_DAILY_LIMIT_CODE = "keyless_daily_limit_exceeded"
+MAX_HONORED_RETRY_AFTER_SECONDS = 60
+NO_RETRY_AFTER_SECONDS = 0.0
+SINGLE_HEADER_VALUE = 1
+
 # Task names accepted in a <task>...</task> tag.
 TASK_NAMES = (
     "ocr",
