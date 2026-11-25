@@ -408,6 +408,30 @@ def test_sync_stream_reads_the_body_to_detect_the_daily_limit(router):
     assert exc_info.value.body == KEYLESS_DAILY_LIMIT["error"]
 
 
+class _BrokenBody(httpx.SyncByteStream):
+    def __iter__(self) -> Iterator[bytes]:
+        yield b'{"error": {"code": "rate'
+        raise httpx.ReadError("connection dropped")
+
+
+# Each case: the client options, keyed and keyless.
+BROKEN_BODY_CLIENTS = {"keyless": {}, "keyed": {"api_key": EXPLICIT_KEY}}
+
+
+@pytest.mark.parametrize("options", BROKEN_BODY_CLIENTS.values(), ids=BROKEN_BODY_CLIENTS.keys())
+def test_sync_stream_429_with_a_broken_body_is_retried(router, options):
+    router.route(host=API_HOST).mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": INFLIGHT_RETRY_AFTER}, stream=_BrokenBody()),
+            httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, content=sse_bytes(STREAM_CHUNKS)
+            ),
+        ]
+    )
+    _call(Interfaze(**options), RAW_STREAM)
+    assert router.calls.call_count == 2
+
+
 def test_async_stream_with_a_long_retry_after_is_not_retried(router):
     # The body of a streamed async response is unread, so a Retry-After above 60 seconds decides.
     _fail(router, 429, GENERIC_RATE_LIMIT, _daily_headers())

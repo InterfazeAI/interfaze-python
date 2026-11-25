@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import Any, Awaitable, Callable, Dict, Optional, Union
 
@@ -58,17 +59,17 @@ def _retry_after_seconds(response: httpx.Response) -> float:
         return NO_RETRY_AFTER_SECONDS
 
 
-# Returns True for the keyless daily limit, which a retry cannot clear. The error code identifies it
-# when the body is readable. An unread streamed body leaves the Retry-After header: openai waits
-# for at most 60 seconds, so a longer wait on a request with no Authorization header marks the limit.
+# Returns True for the keyless daily limit, which a retry cannot clear. A request with an
+# Authorization header is never keyless, so keyed clients retry like openai. The error code
+# identifies the limit when the body is readable. An unread body leaves the Retry-After header:
+# openai waits for at most 60 seconds, so a longer wait marks the limit.
 def _is_keyless_daily_limit(response: httpx.Response) -> bool:
-    if response.status_code != 429:
+    if response.status_code != 429 or "authorization" in response.request.headers:
         return False
     try:
         return _error_code(response.json()) == KEYLESS_DAILY_LIMIT_CODE
     except httpx.ResponseNotRead:
-        keyless = "authorization" not in response.request.headers
-        return keyless and _retry_after_seconds(response) > MAX_HONORED_RETRY_AFTER_SECONDS
+        return _retry_after_seconds(response) > MAX_HONORED_RETRY_AFTER_SECONDS
     except ValueError:
         return False
 
@@ -92,10 +93,12 @@ class _OpenAI(OpenAI):
     def _build_headers(self, *args: Any, **kwargs: Any) -> httpx.Headers:
         return _keep_last_authorization(super()._build_headers(*args, **kwargs))
 
-    # A streamed sync response has an unread body here, so read it to find the error code.
+    # A streamed sync response has an unread body here, so read it to find the error code. A body
+    # that breaks while it is read leaves the Retry-After header to decide.
     def _should_retry(self, response: httpx.Response) -> bool:
         if response.status_code == 429 and not response.is_closed:
-            response.read()
+            with contextlib.suppress(httpx.HTTPError):
+                response.read()
         return not _is_keyless_daily_limit(response) and super()._should_retry(response)
 
 
