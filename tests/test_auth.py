@@ -271,6 +271,16 @@ def test_key_callable_takes_precedence_over_env_key(api, monkeypatch, client_cls
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
 
 
+# openai builds the User-Agent header from the class name of the client.
+USER_AGENTS = {Interfaze: "InterfazeOpenAI/Python", AsyncInterfaze: "AsyncInterfazeOpenAI/Python"}
+
+
+@clients
+def test_user_agent_names_the_interfaze_client(api, client_cls):
+    _call(client_cls(), CHAT)
+    assert api.calls.last.request.headers["user-agent"].startswith(USER_AGENTS[client_cls])
+
+
 # Each case: how to derive a client from client.openai.
 DERIVED = {
     "with_options": lambda openai, **kwargs: openai.with_options(**kwargs),

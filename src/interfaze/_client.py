@@ -88,7 +88,7 @@ def _keep_last_authorization(headers: httpx.Headers) -> httpx.Headers:
 # The *args signatures keep the overrides working when openai changes its private signatures.
 # openai 2.34 and later read OPENAI_ADMIN_KEY for client.openai.admin.*. The empty _admin_api_key_auth
 # keeps that OpenAI credential off Interfaze requests, and older openai versions never read it.
-class _OpenAI(OpenAI):
+class InterfazeOpenAI(OpenAI):
     @property
     def _admin_api_key_auth(self) -> Dict[str, str]:
         return {}
@@ -108,7 +108,7 @@ class _OpenAI(OpenAI):
         return not _is_keyless_daily_limit(response) and super()._should_retry(response)
 
 
-class _AsyncOpenAI(AsyncOpenAI):
+class AsyncInterfazeOpenAI(AsyncOpenAI):
     @property
     def _admin_api_key_auth(self) -> Dict[str, str]:
         return {}
@@ -168,7 +168,7 @@ class Interfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-        self.openai: OpenAI = _OpenAI(
+        self.openai: OpenAI = InterfazeOpenAI(
             api_key=_resolve_key(api_key) or _no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
@@ -196,7 +196,7 @@ class AsyncInterfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-        self.openai: AsyncOpenAI = _AsyncOpenAI(
+        self.openai: AsyncOpenAI = AsyncInterfazeOpenAI(
             api_key=_resolve_key(api_key) or _async_no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
