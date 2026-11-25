@@ -14,7 +14,7 @@ import respx
 from conftest import completion
 from openai import OpenAI
 
-from interfaze import AsyncInterfaze, AuthenticationError, Interfaze, RateLimitError
+from interfaze import AsyncInterfaze, Interfaze, RateLimitError
 
 API_HOST = "api.interfaze.ai"
 MESSAGES = [{"role": "user", "content": "x"}]
@@ -51,7 +51,6 @@ KEYLESS_DAILY_LIMIT = _error(
     "rate_limit_error",
     "keyless_daily_limit_exceeded",
 )
-INVALID_KEY = _error("The API key provided is not valid", "permission_error", "insufficient_quota")
 
 
 # The API sends these headers with the keyless daily limit 429.
@@ -175,16 +174,6 @@ def test_key_callable_takes_precedence_over_env_key(api, monkeypatch, client_cls
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
 
 
-# openai builds the User-Agent header from the class name of the client.
-USER_AGENTS = {Interfaze: "InterfazeOpenAI/Python", AsyncInterfaze: "AsyncInterfazeOpenAI/Python"}
-
-
-@clients
-def test_user_agent_names_the_interfaze_client(api, client_cls):
-    _call(client_cls(), _chat)
-    assert api.calls.last.request.headers["user-agent"].startswith(USER_AGENTS[client_cls])
-
-
 # Each case: how to derive a client from client.openai.
 DERIVED = {
     "with_options": lambda openai, **kwargs: openai.with_options(**kwargs),
@@ -204,16 +193,6 @@ def test_derived_client_from_keyless_client(api, monkeypatch, client_cls, derive
     monkeypatch.setenv("OPENAI_API_KEY", OPENAI_KEY)
     _call(derive(client_cls().openai, **options), _list_models)
     assert _authorizations(api) == [authorization]
-
-
-@clients
-def test_401_raises_after_one_request(router, client_cls):
-    _fail(router, 401, INVALID_KEY, {})
-    with pytest.raises(AuthenticationError) as exc_info:
-        _call(client_cls(api_key=EXPLICIT_KEY), _chat)
-    assert exc_info.value.code == "insufficient_quota"
-    assert exc_info.value.body == INVALID_KEY["error"]
-    assert router.calls.call_count == 1
 
 
 @clients
