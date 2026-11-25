@@ -32,8 +32,7 @@ def _async_trimmed(provider: _KeyProvider) -> _KeyProvider:
     return trimmed
 
 
-# Returns the explicit key, else INTERFAZE_API_KEY, else None for a keyless client. Trims each string
-# key, because an HTTP header value cannot end with a space or a newline.
+# Trims each string key, because an HTTP header value cannot end with a space or a newline.
 def _resolve_key(
     api_key: Union[str, _KeyProvider, None], trim_provider: Callable[[_KeyProvider], _KeyProvider]
 ) -> Union[str, _KeyProvider, None]:
@@ -42,9 +41,7 @@ def _resolve_key(
     return (api_key or "").strip() or os.environ.get("INTERFAZE_API_KEY", "").strip() or None
 
 
-# A keyless client gives OpenAI() a key provider that returns "". The provider stops OpenAI()
-# from reading OPENAI_API_KEY and passes its credential check (openai 2.34 and later). OpenAI
-# sends no Authorization header for an empty key, and with_options() and copy() keep the provider.
+# A key provider that returns "" stops OpenAI() from reading OPENAI_API_KEY and sends no Authorization header.
 def _no_key() -> str:
     return ""
 
@@ -53,12 +50,9 @@ async def _async_no_key() -> str:
     return ""
 
 
-# openai 2.34 and later raise before they send a request with no Authorization header.
-# Interfaze accepts server-side requests with no key, so these clients skip that check.
-# The *args signature keeps the override working when openai changes its private signature.
-# openai 2.34 and later read OPENAI_ADMIN_KEY for client.openai.admin.*. The empty _admin_api_key_auth
-# keeps that OpenAI credential off Interfaze requests, and older openai versions never read it.
+# openai>=2.34 refuses requests with no Authorization header; Interfaze allows keyless.
 class InterfazeOpenAI(OpenAI):
+    # openai>=2.34 reads OPENAI_ADMIN_KEY; keep that credential off Interfaze requests.
     @property
     def _admin_api_key_auth(self) -> Dict[str, str]:
         return {}
