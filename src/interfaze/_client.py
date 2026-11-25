@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import contextlib
 import os
 from typing import Any, Awaitable, Callable, Dict, Optional, Union
 
-import httpx
 from openai import AsyncOpenAI, OpenAI
 
 from ._chat import AsyncChat, Chat
@@ -15,10 +13,6 @@ from ._constants import (
     HEADER_BYPASS_MOA,
     HEADER_SHOW_ADDITIONAL_INFO,
     INTERFAZE_BASE_URL,
-    KEYLESS_DAILY_LIMIT_CODE,
-    MAX_HONORED_RETRY_AFTER_SECONDS,
-    NO_RETRY_AFTER_SECONDS,
-    SINGLE_HEADER_VALUE,
 )
 from ._tasks import AsyncTasks, Tasks
 
@@ -46,46 +40,9 @@ async def _async_no_key() -> str:
     return ""
 
 
-def _error_code(body: object) -> Optional[str]:
-    error = body.get("error") if isinstance(body, dict) else None
-    code = error.get("code") if isinstance(error, dict) else None
-    return code if isinstance(code, str) else None
-
-
-def _retry_after_seconds(response: httpx.Response) -> float:
-    try:
-        return float(response.headers.get("retry-after", ""))
-    except ValueError:
-        return NO_RETRY_AFTER_SECONDS
-
-
-# Returns True for the keyless daily limit, which a retry cannot clear. A request with an
-# Authorization header is never keyless, so keyed clients retry like openai. The error code
-# identifies the limit when the body is readable. An unread body leaves the Retry-After header:
-# openai waits for at most 60 seconds, so a longer wait marks the limit.
-def _is_keyless_daily_limit(response: httpx.Response) -> bool:
-    if response.status_code != 429 or "authorization" in response.request.headers:
-        return False
-    try:
-        return _error_code(response.json()) == KEYLESS_DAILY_LIMIT_CODE
-    except httpx.ResponseNotRead:
-        return _retry_after_seconds(response) > MAX_HONORED_RETRY_AFTER_SECONDS
-    except ValueError:
-        return False
-
-
-# openai joins the key and each caller header as separate dict keys, so an Authorization header with
-# another letter case reaches the request next to the key. The caller header comes last and wins.
-def _keep_last_authorization(headers: httpx.Headers) -> httpx.Headers:
-    values = headers.get_list("authorization")
-    if len(values) > SINGLE_HEADER_VALUE:
-        headers["authorization"] = values.pop()
-    return headers
-
-
 # openai 2.34 and later raise before they send a request with no Authorization header.
 # Interfaze accepts server-side requests with no key, so these clients skip that check.
-# The *args signatures keep the overrides working when openai changes its private signatures.
+# The *args signature keeps the override working when openai changes its private signature.
 # openai 2.34 and later read OPENAI_ADMIN_KEY for client.openai.admin.*. The empty _admin_api_key_auth
 # keeps that OpenAI credential off Interfaze requests, and older openai versions never read it.
 class InterfazeOpenAI(OpenAI):
@@ -96,17 +53,6 @@ class InterfazeOpenAI(OpenAI):
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
         return None
 
-    def _build_headers(self, *args: Any, **kwargs: Any) -> httpx.Headers:
-        return _keep_last_authorization(super()._build_headers(*args, **kwargs))
-
-    # A streamed sync response has an unread body here, so read it to find the error code. A body
-    # that breaks while it is read leaves the Retry-After header to decide.
-    def _should_retry(self, response: httpx.Response) -> bool:
-        if response.status_code == 429 and not response.is_closed:
-            with contextlib.suppress(httpx.HTTPError):
-                response.read()
-        return not _is_keyless_daily_limit(response) and super()._should_retry(response)
-
 
 class AsyncInterfazeOpenAI(AsyncOpenAI):
     @property
@@ -115,14 +61,6 @@ class AsyncInterfazeOpenAI(AsyncOpenAI):
 
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
         return None
-
-    def _build_headers(self, *args: Any, **kwargs: Any) -> httpx.Headers:
-        return _keep_last_authorization(super()._build_headers(*args, **kwargs))
-
-    # The keyless daily limit check is a guess from the Retry-After header, because an async
-    # stream body is not readable yet in this sync hook.
-    def _should_retry(self, response: httpx.Response) -> bool:
-        return not _is_keyless_daily_limit(response) and super()._should_retry(response)
 
 
 def _build_headers(
