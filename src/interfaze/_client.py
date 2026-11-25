@@ -86,7 +86,13 @@ def _keep_last_authorization(headers: httpx.Headers) -> httpx.Headers:
 # openai 2.34 and later raise before they send a request with no Authorization header.
 # Interfaze accepts server-side requests with no key, so these clients skip that check.
 # The *args signatures keep the overrides working when openai changes its private signatures.
+# openai 2.34 and later read OPENAI_ADMIN_KEY for client.openai.admin.*. The empty _admin_api_key_auth
+# keeps that OpenAI credential off Interfaze requests, and older openai versions never read it.
 class _OpenAI(OpenAI):
+    @property
+    def _admin_api_key_auth(self) -> Dict[str, str]:
+        return {}
+
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
         return None
 
@@ -103,6 +109,10 @@ class _OpenAI(OpenAI):
 
 
 class _AsyncOpenAI(AsyncOpenAI):
+    @property
+    def _admin_api_key_auth(self) -> Dict[str, str]:
+        return {}
+
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
         return None
 

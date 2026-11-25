@@ -34,6 +34,7 @@ EMBEDDINGS = {
 MODERATIONS = {"id": "modr-test", "model": "interfaze-beta", "results": []}
 BATCHES = {"object": "list", "data": [], "has_more": False}
 RESPONSE_BODIES = {
+    "/organization/projects": BATCHES,
     "/models": MODELS_LIST,
     "/embeddings": EMBEDDINGS,
     "/moderations": MODERATIONS,
@@ -179,6 +180,15 @@ def _fail(router: respx.MockRouter, status: int, body: Dict[str, Any], headers: 
 
 
 operations = pytest.mark.parametrize("operation", OPERATIONS.values(), ids=OPERATIONS.keys())
+# openai 2.34 and later have the admin resource, which reads OPENAI_ADMIN_KEY.
+ADMIN = pytest.param(
+    lambda client: client.openai.admin.organization.projects.list(),
+    id="admin",
+    marks=pytest.mark.skipif(not hasattr(OpenAI, "admin"), reason="This openai has no admin resource."),
+)
+credential_operations = pytest.mark.parametrize(
+    "operation", [*(pytest.param(op, id=name) for name, op in OPERATIONS.items()), ADMIN]
+)
 clients = pytest.mark.parametrize("client_cls", CLIENTS, ids=CLIENT_IDS)
 
 
@@ -189,7 +199,7 @@ def test_no_key_sends_no_authorization(api, client_cls, operation):
     assert _authorizations(api) == [None]
 
 
-@operations
+@credential_operations
 @clients
 def test_no_key_ignores_openai_credentials(api, monkeypatch, client_cls, operation):
     monkeypatch.setenv("OPENAI_API_KEY", OPENAI_KEY)
