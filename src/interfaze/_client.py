@@ -119,7 +119,8 @@ class AsyncInterfazeOpenAI(AsyncOpenAI):
     def _build_headers(self, *args: Any, **kwargs: Any) -> httpx.Headers:
         return _keep_last_authorization(super()._build_headers(*args, **kwargs))
 
-    # This hook is sync, so it cannot read a streamed async body.
+    # The keyless daily limit check is a guess from the Retry-After header, because an async
+    # stream body is not readable yet in this sync hook.
     def _should_retry(self, response: httpx.Response) -> bool:
         return not _is_keyless_daily_limit(response) and super()._should_retry(response)
 
