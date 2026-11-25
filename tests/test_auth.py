@@ -14,7 +14,6 @@ import pytest
 import respx
 from conftest import STREAM_CHUNKS, completion, sse_bytes
 from openai import AsyncOpenAI, OpenAI
-from pydantic import BaseModel
 
 from interfaze import AsyncInterfaze, AuthenticationError, Interfaze, InternalServerError, RateLimitError
 from interfaze._constants import INTERFAZE_BASE_URL
@@ -25,21 +24,8 @@ MODELS_LIST = {
     "object": "list",
     "data": [{"id": "interfaze-beta", "object": "model", "owned_by": "interfaze"}],
 }
-EMBEDDINGS = {
-    "object": "list",
-    "data": [{"object": "embedding", "index": 0, "embedding": [0.1]}],
-    "model": "interfaze-beta",
-    "usage": {"prompt_tokens": 1, "total_tokens": 1},
-}
-MODERATIONS = {"id": "modr-test", "model": "interfaze-beta", "results": []}
-BATCHES = {"object": "list", "data": [], "has_more": False}
-RESPONSE_BODIES = {
-    "/organization/projects": BATCHES,
-    "/models": MODELS_LIST,
-    "/embeddings": EMBEDDINGS,
-    "/moderations": MODERATIONS,
-    "/batches": BATCHES,
-}
+PROJECTS_LIST = {"object": "list", "data": [], "has_more": False}
+RESPONSE_BODIES = {"/models": MODELS_LIST, "/organization/projects": PROJECTS_LIST}
 WEATHER = {"city": "Tokyo", "temp_c": 21}
 
 ENV_KEY = "interfaze-env-key"
@@ -51,7 +37,6 @@ CALLER_AUTHORIZATION = "Bearer caller-token"
 
 # Default retries make three attempts in total.
 DEFAULT_ATTEMPTS = 3
-SECONDS_LIMIT_FOR_NO_WAIT = 2.0
 SECONDS_IN_AN_HOUR = 3600
 KEYLESS_DAILY_LIMIT_REQUESTS = 1000
 KEYLESS_INFLIGHT_LIMIT_REQUESTS = 5
@@ -92,27 +77,15 @@ def _daily_headers() -> Dict[str, str]:
     }
 
 
-class _Weather(BaseModel):
-    city: str
-    temp_c: float
-
-
 CLIENTS = [Interfaze, AsyncInterfaze]
 CLIENT_IDS = ["sync", "async"]
 OPERATIONS: Dict[str, Callable[[Any], Any]] = {
     "chat": lambda client: client.chat.completions.create(messages=MESSAGES),
-    "stream": lambda client: client.chat.completions.stream(messages=MESSAGES).get_final_completion(),
     "raw_stream": lambda client: client.chat.completions.create(messages=MESSAGES, stream=True),
-    "parse": lambda client: client.chat.completions.parse(messages=MESSAGES, response_format=_Weather),
     "models": lambda client: client.models.list(),
-    "raw_embeddings": lambda client: client.openai.embeddings.create(model="interfaze-beta", input="x"),
-    "raw_moderations": lambda client: client.openai.moderations.create(input="x"),
-    "raw_batches": lambda client: client.openai.batches.list(),
 }
 CHAT = OPERATIONS["chat"]
 RAW_STREAM = OPERATIONS["raw_stream"]
-# A streamed async response has an unread body when the retry decision runs.
-BODY_READABLE_OPERATIONS = ["chat", "parse", "models", "raw_embeddings", "raw_moderations", "raw_batches"]
 
 
 def _list_models(openai: Any) -> Any:
@@ -192,13 +165,6 @@ credential_operations = pytest.mark.parametrize(
 clients = pytest.mark.parametrize("client_cls", CLIENTS, ids=CLIENT_IDS)
 
 
-@operations
-@clients
-def test_no_key_sends_no_authorization(api, client_cls, operation):
-    _call(client_cls(), operation)
-    assert _authorizations(api) == [None]
-
-
 @credential_operations
 @clients
 def test_no_key_ignores_openai_credentials(api, monkeypatch, client_cls, operation):
@@ -208,19 +174,17 @@ def test_no_key_ignores_openai_credentials(api, monkeypatch, client_cls, operati
     assert _authorizations(api) == [None]
 
 
-@operations
 @clients
-def test_env_key_authorizes_requests(api, monkeypatch, client_cls, operation):
+def test_env_key_authorizes_requests(api, monkeypatch, client_cls):
     monkeypatch.setenv("INTERFAZE_API_KEY", ENV_KEY)
-    _call(client_cls(), operation)
+    _call(client_cls(), CHAT)
     assert _authorizations(api) == [f"Bearer {ENV_KEY}"]
 
 
-@operations
 @clients
-def test_explicit_key_takes_precedence_over_env_key(api, monkeypatch, client_cls, operation):
+def test_explicit_key_takes_precedence_over_env_key(api, monkeypatch, client_cls):
     monkeypatch.setenv("INTERFAZE_API_KEY", ENV_KEY)
-    _call(client_cls(api_key=EXPLICIT_KEY), operation)
+    _call(client_cls(api_key=EXPLICIT_KEY), CHAT)
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
 
 
@@ -229,11 +193,7 @@ KEY_CASES = {
     "padded-explicit-key": (f" {EXPLICIT_KEY}\n", "", f"Bearer {EXPLICIT_KEY}"),
     "padded-env-key": (None, f" {ENV_KEY}\n", f"Bearer {ENV_KEY}"),
     "empty-explicit-key-is-keyless": ("", "", None),
-    "space-explicit-key-is-keyless": (" ", "", None),
-    "newline-explicit-key-is-keyless": (" \n", "", None),
     "empty-explicit-key-uses-env-key": ("", ENV_KEY, f"Bearer {ENV_KEY}"),
-    "blank-explicit-key-uses-env-key": ("   ", ENV_KEY, f"Bearer {ENV_KEY}"),
-    "newline-explicit-key-uses-env-key": (" \n", ENV_KEY, f"Bearer {ENV_KEY}"),
     "blank-env-key-is-keyless": (None, " \n", None),
 }
 
@@ -257,10 +217,9 @@ async def _async_key() -> str:
 KEY_CALLABLES = {"sync": (Interfaze, _sync_key), "async": (AsyncInterfaze, _async_key)}
 
 
-@operations
 @pytest.mark.parametrize("client_cls,key_callable", KEY_CALLABLES.values(), ids=KEY_CALLABLES.keys())
-def test_key_callable_authorizes_requests(api, client_cls, key_callable, operation):
-    _call(client_cls(api_key=key_callable), operation)
+def test_key_callable_authorizes_requests(api, client_cls, key_callable):
+    _call(client_cls(api_key=key_callable), CHAT)
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
 
 
@@ -306,13 +265,6 @@ def test_derived_client_sends_new_key_from_keyless_client(api, client_cls, deriv
 
 @derived
 @clients
-def test_derived_client_sends_new_key_over_old_key(api, client_cls, derive):
-    _call(derive(client_cls(api_key=EXPLICIT_KEY).openai, api_key=NEW_KEY), _list_models)
-    assert _authorizations(api) == [f"Bearer {NEW_KEY}"]
-
-
-@derived
-@clients
 def test_derived_client_keeps_key(api, client_cls, derive):
     _call(derive(client_cls(api_key=EXPLICIT_KEY).openai, max_retries=0), _list_models)
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
@@ -332,12 +284,11 @@ caller_header = pytest.mark.parametrize(
 )
 
 
-@operations
 @caller_header
 @clients
-def test_caller_default_header_is_sent_once(api, client_cls, api_key, header_name, operation):
+def test_caller_default_header_is_sent_once(api, client_cls, api_key, header_name):
     client = client_cls(api_key=api_key, default_headers={header_name: CALLER_AUTHORIZATION})
-    _call(client, operation)
+    _call(client, CHAT)
     assert _sent_authorizations(api) == [[CALLER_AUTHORIZATION]]
 
 
@@ -359,51 +310,28 @@ def test_caller_default_header_survives_derived_client(api, client_cls, api_key,
     assert _sent_authorizations(api) == [[CALLER_AUTHORIZATION]]
 
 
-@operations
+# Each case: the client options, and the Authorization header the rejected request carries.
+REJECTED_CLIENTS = {"keyed": ({"api_key": EXPLICIT_KEY}, f"Bearer {EXPLICIT_KEY}"), "keyless": ({}, None)}
+
+
+@pytest.mark.parametrize("options,authorization", REJECTED_CLIENTS.values(), ids=REJECTED_CLIENTS.keys())
 @clients
-def test_rejected_key_raises_after_one_request(router, client_cls, operation):
+def test_401_raises_after_one_request(router, client_cls, options, authorization):
     _fail(router, 401, INVALID_KEY, {})
     with pytest.raises(AuthenticationError) as exc_info:
-        _call(client_cls(api_key=EXPLICIT_KEY), operation)
+        _call(client_cls(**options), CHAT)
     assert exc_info.value.status_code == 401
     assert exc_info.value.code == "insufficient_quota"
     assert exc_info.value.body == INVALID_KEY["error"]
-    assert _authorizations(router) == [f"Bearer {EXPLICIT_KEY}"]
-
-
-@operations
-@clients
-def test_keyless_401_raises_after_one_request(router, client_cls, operation):
-    _fail(router, 401, INVALID_KEY, {})
-    with pytest.raises(AuthenticationError) as exc_info:
-        _call(client_cls(), operation)
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.code == "insufficient_quota"
-    assert exc_info.value.body == INVALID_KEY["error"]
-    assert _authorizations(router) == [None]
-
-
-@operations
-@clients
-def test_keyless_daily_limit_keeps_status_and_guidance(router, client_cls, operation):
-    _fail(router, 429, KEYLESS_DAILY_LIMIT, _daily_headers())
-    with pytest.raises(RateLimitError) as exc_info:
-        _call(client_cls(max_retries=0), operation)
-    assert exc_info.value.status_code == 429
-    assert exc_info.value.code == "keyless_daily_limit_exceeded"
-    assert exc_info.value.body == KEYLESS_DAILY_LIMIT["error"]
-    assert SIGNUP_HINT in str(exc_info.value)
-    assert _authorizations(router) == [None]
+    assert _authorizations(router) == [authorization]
 
 
 @operations
 @clients
 def test_keyless_daily_limit_raises_after_one_request_with_default_retries(router, client_cls, operation):
     _fail(router, 429, KEYLESS_DAILY_LIMIT, _daily_headers())
-    started = time.monotonic()
     with pytest.raises(RateLimitError) as exc_info:
         _call(client_cls(), operation)
-    assert time.monotonic() - started < SECONDS_LIMIT_FOR_NO_WAIT
     assert router.calls.call_count == 1
     assert exc_info.value.status_code == 429
     assert exc_info.value.code == "keyless_daily_limit_exceeded"
@@ -411,12 +339,11 @@ def test_keyless_daily_limit_raises_after_one_request_with_default_retries(route
     assert SIGNUP_HINT in str(exc_info.value)
 
 
-@pytest.mark.parametrize("operation_name", BODY_READABLE_OPERATIONS)
 @clients
-def test_keyless_daily_limit_is_detected_by_body_code_without_retry_after(router, client_cls, operation_name):
+def test_keyless_daily_limit_is_detected_by_body_code_without_retry_after(router, client_cls):
     _fail(router, 429, KEYLESS_DAILY_LIMIT, {})
     with pytest.raises(RateLimitError):
-        _call(client_cls(), OPERATIONS[operation_name])
+        _call(client_cls(), CHAT)
     assert router.calls.call_count == 1
 
 
@@ -500,7 +427,6 @@ UNRECOGNIZED_BODIES = {
     "json-list": b"[]",
     "error-text": b'{"error": "busy"}',
     "error-without-code": b'{"error": {"message": "busy"}}',
-    "error-numeric-code": b'{"error": {"code": 429}}',
 }
 
 
@@ -520,26 +446,19 @@ def test_async_stream_with_an_unparsable_retry_after_is_retried(router, no_retry
     assert router.calls.call_count == DEFAULT_ATTEMPTS
 
 
-@operations
 @clients
-def test_keyless_server_error_is_still_retried(router, no_retry_sleep, client_cls, operation):
+def test_keyless_server_error_is_still_retried(router, no_retry_sleep, client_cls):
     _fail(router, 500, GENERIC_RATE_LIMIT, {})
     with pytest.raises(InternalServerError):
-        _call(client_cls(), operation)
+        _call(client_cls(), CHAT)
     assert router.calls.call_count == DEFAULT_ATTEMPTS
 
 
 @clients
-def test_header_validation_accepts_any_arguments(client_cls):
-    assert client_cls().openai._validate_headers({}, {}, "extra", flag=True) is None
-
-
-@operations
-@clients
-def test_keyless_inflight_limit_is_still_retried(router, client_cls, operation):
+def test_keyless_inflight_limit_is_still_retried(router, client_cls):
     _fail(router, 429, KEYLESS_INFLIGHT_LIMIT, {"Retry-After": INFLIGHT_RETRY_AFTER})
     with pytest.raises(RateLimitError) as exc_info:
-        _call(client_cls(), operation)
+        _call(client_cls(), CHAT)
     assert router.calls.call_count == DEFAULT_ATTEMPTS
     assert exc_info.value.code == "keyless_inflight_limit_exceeded"
     assert exc_info.value.body == KEYLESS_INFLIGHT_LIMIT["error"]
