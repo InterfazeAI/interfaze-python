@@ -20,12 +20,25 @@ from ._tasks import AsyncTasks, Tasks
 _KeyProvider = Callable[[], Any]
 
 
+# openai calls a key provider before each request, so the wrapper trims the key each time.
+def _trimmed(provider: _KeyProvider) -> _KeyProvider:
+    return lambda: provider().strip()
+
+
+def _async_trimmed(provider: _KeyProvider) -> _KeyProvider:
+    async def trimmed() -> str:
+        return str((await provider()).strip())
+
+    return trimmed
+
+
 # Returns the explicit key, else INTERFAZE_API_KEY, else None for a keyless client. Trims each string
-# key, because an HTTP header value cannot end with a space or a newline. A key provider passes
-# through untouched, because openai calls it before each request.
-def _resolve_key(api_key: Union[str, _KeyProvider, None]) -> Union[str, _KeyProvider, None]:
+# key, because an HTTP header value cannot end with a space or a newline.
+def _resolve_key(
+    api_key: Union[str, _KeyProvider, None], trim_provider: Callable[[_KeyProvider], _KeyProvider]
+) -> Union[str, _KeyProvider, None]:
     if callable(api_key):
-        return api_key
+        return trim_provider(api_key)
     return (api_key or "").strip() or os.environ.get("INTERFAZE_API_KEY", "").strip() or None
 
 
@@ -108,7 +121,7 @@ class Interfaze:
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         self.openai: OpenAI = InterfazeOpenAI(
-            api_key=_resolve_key(api_key) or _no_key,
+            api_key=_resolve_key(api_key, _trimmed) or _no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
                 default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key
@@ -136,7 +149,7 @@ class AsyncInterfaze:
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         self.openai: AsyncOpenAI = AsyncInterfazeOpenAI(
-            api_key=_resolve_key(api_key) or _async_no_key,
+            api_key=_resolve_key(api_key, _async_trimmed) or _async_no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
             default_headers=_build_headers(
                 default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key

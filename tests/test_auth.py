@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import threading
 import time
+from functools import partial
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import httpx
@@ -172,6 +175,70 @@ def test_key_callable_takes_precedence_over_env_key(api, monkeypatch, client_cls
     monkeypatch.setenv("INTERFAZE_API_KEY", ENV_KEY)
     _call(client_cls(api_key=key_callable), _chat)
     assert _authorizations(api) == [f"Bearer {EXPLICIT_KEY}"]
+
+
+# Each case: the value a key callable returns, and the Authorization header the request carries.
+CALLABLE_KEY = "interfaze-callable-key"
+KEY_CALLABLE_RESULTS = {
+    "padded-key-is-trimmed": (f" {CALLABLE_KEY}\n", f"Bearer {CALLABLE_KEY}"),
+    "blank-key-is-keyless": ("  ", None),
+}
+key_callable_results = pytest.mark.parametrize(
+    "result,authorization", KEY_CALLABLE_RESULTS.values(), ids=KEY_CALLABLE_RESULTS.keys()
+)
+
+
+def _key_callable(client_cls: Any, result: str) -> Callable[[], Any]:
+    async def async_key() -> str:
+        return result
+
+    return async_key if client_cls is AsyncInterfaze else lambda: result
+
+
+@key_callable_results
+@clients
+def test_key_callable_result_is_trimmed(api, client_cls, result, authorization):
+    _call(client_cls(api_key=_key_callable(client_cls, result)), _chat)
+    assert _authorizations(api) == [authorization]
+
+
+class _RecordingHandler(BaseHTTPRequestHandler):
+    def __init__(self, authorizations: List[Optional[str]], *args: Any, **kwargs: Any) -> None:
+        self.authorizations = authorizations
+        super().__init__(*args, **kwargs)
+
+    def do_POST(self) -> None:
+        self.authorizations.append(self.headers.get("Authorization"))
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        body = json.dumps(completion(json.dumps(WEATHER))).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args: Any) -> None:
+        return None
+
+
+# A real socket, because respx does not run the h11 header validation.
+@pytest.fixture
+def local_api() -> Iterator[Dict[str, Any]]:
+    authorizations: List[Optional[str]] = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(_RecordingHandler, authorizations))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield {"base_url": f"http://127.0.0.1:{server.server_port}/v1", "authorizations": authorizations}
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+@clients
+def test_padded_key_callable_passes_header_validation(local_api, client_cls):
+    padded_key = _key_callable(client_cls, f" {CALLABLE_KEY}\n")
+    _call(client_cls(api_key=padded_key, base_url=local_api["base_url"]), _chat)
+    assert local_api["authorizations"] == [f"Bearer {CALLABLE_KEY}"]
 
 
 # Each case: how to derive a client from client.openai.
