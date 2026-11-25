@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Any, Awaitable, Callable, Dict, Optional, Union
 
 from openai import AsyncOpenAI, OpenAI
@@ -13,11 +14,14 @@ from ._constants import (
     HEADER_BYPASS_MOA,
     HEADER_SHOW_ADDITIONAL_INFO,
     INTERFAZE_BASE_URL,
+    KEYLESS_WARNING,
 )
 from ._tasks import AsyncTasks, Tasks
 
 
 _KeyProvider = Callable[[], Any]
+
+_keyless_warned = False
 
 
 # openai calls a key provider before each request, so the wrapper trims the key each time.
@@ -39,6 +43,20 @@ def _resolve_key(
     if callable(api_key):
         return trim_provider(api_key)
     return (api_key or "").strip() or os.environ.get("INTERFAZE_API_KEY", "").strip() or None
+
+
+# A caller Authorization header counts as a key.
+def _has_authorization(headers: Dict[str, str]) -> bool:
+    return any(name.lower() == "authorization" for name in headers)
+
+
+# Warns once per process; stacklevel=3 points at the code that built the client.
+def _warn_if_keyless(key: Union[str, _KeyProvider, None], headers: Dict[str, str]) -> None:
+    global _keyless_warned
+    if key or _has_authorization(headers) or _keyless_warned:
+        return
+    _keyless_warned = True
+    warnings.warn(KEYLESS_WARNING, UserWarning, stacklevel=3)
 
 
 # A key provider that returns "" stops OpenAI() from reading OPENAI_API_KEY and sends no Authorization header.
@@ -114,12 +132,13 @@ class Interfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+        key = _resolve_key(api_key, _trimmed)
+        headers = _build_headers(default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key)
+        _warn_if_keyless(key, headers)
         self.openai: OpenAI = InterfazeOpenAI(
-            api_key=_resolve_key(api_key, _trimmed) or _no_key,
+            api_key=key or _no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
-            default_headers=_build_headers(
-                default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key
-            ),
+            default_headers=headers,
             **kwargs,
         )
         _drop_openai_env_ids(self.openai, kwargs)
@@ -142,12 +161,13 @@ class AsyncInterfaze:
         **kwargs: Any,
     ) -> None:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+        key = _resolve_key(api_key, _async_trimmed)
+        headers = _build_headers(default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key)
+        _warn_if_keyless(key, headers)
         self.openai: AsyncOpenAI = AsyncInterfazeOpenAI(
-            api_key=_resolve_key(api_key, _async_trimmed) or _async_no_key,
+            api_key=key or _async_no_key,
             base_url=base_url or INTERFAZE_BASE_URL,
-            default_headers=_build_headers(
-                default_headers, show_additional_info, bypass_moa, bypass_cache, admin_key
-            ),
+            default_headers=headers,
             **kwargs,
         )
         _drop_openai_env_ids(self.openai, kwargs)

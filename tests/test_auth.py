@@ -7,6 +7,7 @@ import inspect
 import json
 import threading
 import time
+import warnings
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Iterator, List, Optional
@@ -17,6 +18,7 @@ import respx
 from conftest import completion
 from openai import OpenAI
 
+import interfaze._client as client_module
 from interfaze import AsyncInterfaze, Interfaze, RateLimitError
 
 API_HOST = "api.interfaze.ai"
@@ -37,6 +39,10 @@ OPENAI_ADMIN_KEY = "openai-admin-key"
 
 SECONDS_IN_AN_HOUR = 3600
 KEYLESS_DAILY_LIMIT_REQUESTS = 1000
+KEYLESS_WARNING = (
+    "Interfaze SDK is running in keyless mode. "
+    "For higher rate limits, get an API key at https://interfaze.ai/dashboard."
+)
 
 # The API builds these error bodies in InterfazeAI/interfaze src/helpers/keylessGuard.ts and apiKeyAuth.ts.
 SIGNUP_HINT = (
@@ -104,6 +110,7 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("INTERFAZE_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_ADMIN_KEY", raising=False)
+    monkeypatch.setattr(client_module, "_keyless_warned", False)
 
 
 @pytest.fixture
@@ -270,3 +277,41 @@ def test_keyless_daily_limit_raises_after_one_request(router, client_cls):
     assert router.calls.call_count == 1
     assert exc_info.value.code == "keyless_daily_limit_exceeded"
     assert SIGNUP_HINT in str(exc_info.value)
+
+
+def _keyless_warnings(recorded: List[warnings.WarningMessage]) -> List[warnings.WarningMessage]:
+    return [item for item in recorded if str(item.message) == KEYLESS_WARNING]
+
+
+@clients
+def test_first_keyless_client_warns_once(recwarn, client_cls):
+    client_cls()
+    client_cls()
+    (warning,) = _keyless_warnings(recwarn.list)
+    assert warning.category is UserWarning
+    assert warning.filename == __file__
+
+
+# Each case: the constructor arguments and the INTERFAZE_API_KEY value of a client that has a key.
+KEYED_CLIENTS = {
+    "explicit-key": ({"api_key": EXPLICIT_KEY}, ""),
+    "env-key": ({}, ENV_KEY),
+    "key-callable": ({"api_key": lambda: EXPLICIT_KEY}, ""),
+    "authorization-header": ({"default_headers": {"Authorization": f"Bearer {EXPLICIT_KEY}"}}, ""),
+    "lowercase-authorization-header": ({"default_headers": {"authorization": f"Bearer {EXPLICIT_KEY}"}}, ""),
+}
+
+
+@pytest.mark.parametrize("kwargs,env_key", KEYED_CLIENTS.values(), ids=KEYED_CLIENTS.keys())
+@clients
+def test_keyed_client_does_not_warn(recwarn, monkeypatch, client_cls, kwargs, env_key):
+    monkeypatch.setenv("INTERFAZE_API_KEY", env_key)
+    client_cls(**kwargs)
+    assert _keyless_warnings(recwarn.list) == []
+
+
+@clients
+def test_keyed_client_does_not_use_up_the_warning(recwarn, client_cls):
+    client_cls(api_key=EXPLICIT_KEY)
+    client_cls()
+    assert len(_keyless_warnings(recwarn.list)) == 1
