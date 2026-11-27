@@ -95,7 +95,12 @@ def _build_headers(
     bypass_cache: bool,
     admin_key: Optional[str],
 ) -> Dict[str, str]:
-    headers: Dict[str, str] = dict(default_headers or {})
+    # A blank Authorization header counts as no key.
+    headers: Dict[str, str] = {
+        name: value
+        for name, value in (default_headers or {}).items()
+        if name.lower() != "authorization" or str(value).strip()
+    }
     if show_additional_info:
         headers[HEADER_SHOW_ADDITIONAL_INFO] = "true"
     if bypass_moa:

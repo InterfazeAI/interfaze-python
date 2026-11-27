@@ -310,6 +310,14 @@ def test_keyed_client_does_not_warn(recwarn, monkeypatch, client_cls, kwargs, en
     assert _keyless_warnings(recwarn.list) == []
 
 
+@pytest.mark.parametrize("value", ["", "  "], ids=["empty", "whitespace"])
+@clients
+def test_blank_authorization_header_is_keyless(api, recwarn, client_cls, value):
+    _call(client_cls(default_headers={"Authorization": value}), _chat)
+    assert _authorizations(api) == [None]
+    assert len(_keyless_warnings(recwarn.list)) == 1
+
+
 @clients
 def test_keyed_client_does_not_use_up_the_warning(recwarn, client_cls):
     client_cls(api_key=EXPLICIT_KEY)
