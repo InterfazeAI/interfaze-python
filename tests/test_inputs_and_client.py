@@ -170,12 +170,6 @@ def test_curated_surface():
     assert hasattr(c, "openai")  # escape hatch
 
 
-def test_missing_key_raises(monkeypatch):
-    monkeypatch.delenv("INTERFAZE_API_KEY", raising=False)
-    with pytest.raises(InterfazeError, match="INTERFAZE_API_KEY"):
-        Interfaze()
-
-
 def test_default_timeout_covers_server_cap():
     assert Interfaze(api_key="t").openai.timeout == 900.0
     assert AsyncInterfaze(api_key="t").openai.timeout == 900.0

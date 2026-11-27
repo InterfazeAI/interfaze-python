@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
 import respx
 from conftest import JSON_OBJECT, STREAM_CHUNKS, TASK_OCR, TOOL_CALL, last_body, mock_json, mock_sse
 
-from interfaze import AsyncInterfaze, InterfazeError
+from interfaze import AsyncInterfaze
 
 WEATHER_TOOL = [
     {
@@ -67,12 +66,6 @@ def test_async_json_object_fence_stripped():
     content = r.choices[0].message.content
     assert not content.strip().startswith("```")
     assert json.loads(content)["city"] == "Tokyo"
-
-
-def test_async_missing_key_raises(monkeypatch):
-    monkeypatch.delenv("INTERFAZE_API_KEY", raising=False)
-    with pytest.raises(InterfazeError, match="INTERFAZE_API_KEY"):
-        AsyncInterfaze()
 
 
 @respx.mock

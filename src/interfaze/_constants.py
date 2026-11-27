@@ -3,6 +3,10 @@ from __future__ import annotations
 INTERFAZE_BASE_URL = "https://api.interfaze.ai/v1"
 INTERFAZE_MODEL = "interfaze-beta"
 DEFAULT_TIMEOUT = 900.0
+KEYLESS_WARNING = (
+    "Interfaze SDK is running in keyless mode. "
+    "For higher rate limits, get an API key at https://interfaze.ai/dashboard."
+)
 
 # Task names accepted in a <task>...</task> tag.
 TASK_NAMES = (
