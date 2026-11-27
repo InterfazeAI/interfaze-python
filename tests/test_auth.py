@@ -188,7 +188,6 @@ def test_key_callable_takes_precedence_over_env_key(api, monkeypatch, client_cls
 CALLABLE_KEY = "interfaze-callable-key"
 KEY_CALLABLE_RESULTS = {
     "padded-key-is-trimmed": (f" {CALLABLE_KEY}\n", f"Bearer {CALLABLE_KEY}"),
-    "blank-key-is-keyless": ("  ", None),
 }
 key_callable_results = pytest.mark.parametrize(
     "result,authorization", KEY_CALLABLE_RESULTS.values(), ids=KEY_CALLABLE_RESULTS.keys()
@@ -207,6 +206,14 @@ def _key_callable(client_cls: Any, result: str) -> Callable[[], Any]:
 def test_key_callable_result_is_trimmed(api, client_cls, result, authorization):
     _call(client_cls(api_key=_key_callable(client_cls, result)), _chat)
     assert _authorizations(api) == [authorization]
+
+
+@pytest.mark.parametrize("result", ["", "  "], ids=["empty", "whitespace"])
+@clients
+def test_blank_key_callable_raises_before_the_request(api, client_cls, result):
+    with pytest.raises(TypeError, match="Could not resolve authentication method"):
+        _call(client_cls(api_key=_key_callable(client_cls, result)), _chat)
+    assert api.calls.call_count == 0
 
 
 class _RecordingHandler(BaseHTTPRequestHandler):

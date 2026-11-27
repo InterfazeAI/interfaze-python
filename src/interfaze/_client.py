@@ -75,8 +75,10 @@ class InterfazeOpenAI(OpenAI):
     def _admin_api_key_auth(self) -> Dict[str, str]:
         return {}
 
+    # Only the keyless stand-in skips the check, so a key callable returning a blank key still raises.
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        if getattr(self, "_api_key_provider", None) is not _no_key:
+            super()._validate_headers(*args, **kwargs)
 
 
 class AsyncInterfazeOpenAI(AsyncOpenAI):
@@ -85,7 +87,8 @@ class AsyncInterfazeOpenAI(AsyncOpenAI):
         return {}
 
     def _validate_headers(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        if getattr(self, "_api_key_provider", None) is not _async_no_key:
+            super()._validate_headers(*args, **kwargs)
 
 
 def _build_headers(
